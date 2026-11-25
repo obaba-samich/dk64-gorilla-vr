@@ -402,6 +402,40 @@ static void test_zero_dt_is_noop(void) {
     CHECK(r.s.body.y == b.y, "dt 0 moved the body");
 }
 
+static void test_head_height(void) {
+    rig r;
+    rig_init(&r, V(0, -2, 5), V(8, -2, 0));
+    r.p.head_height = 10.0f;
+    rig_start(&r, V(0, 50, 0));
+    rig_step(&r, 1, Z3, Z3, Z3);
+    CHECK(fabsf(r.s.hand[0].pos.y - (r.s.body.y + 10.0f - 2.0f)) < 0.01f,
+          "hands hang from the head, not the body centre: hand %f body %f", r.s.hand[0].pos.y, r.s.body.y);
+}
+
+static void test_external_flight(void) {
+    rig r;
+    int launched = 0, i;
+    setup_hand_on_floor(&r);
+    r.in.external_flight = 1;
+    {
+        float y0 = r.s.body.y;
+        rig_step(&r, 1, V(0, 3.0f, 0), Z3, Z3); /* let go, nothing holding */
+        for (i = 0; i < 30; i++) {
+            rig_step(&r, 1, Z3, Z3, Z3);
+        }
+        CHECK(fabsf(r.s.body.y - y0) < 0.01f, "with the game owning flight the body stays put: %f -> %f", y0, r.s.body.y);
+    }
+    rig_step(&r, 1, V(0, -3.5f, 0), Z3, Z3);   /* back onto the floor */
+    rig_step(&r, 6, V(0, -1.0f, 0), Z3, Z3);   /* push, 90 units/s */
+    for (i = 0; i < 1; i++) {
+        rig_step(&r, 1, V(0, 3.0f, 0), Z3, Z3);
+        launched += r.ev.launched;
+    }
+    CHECK(launched == 1 && r.ev.launch_velocity.y > 80.0f, "release still reports the launch: %d %f", launched,
+          r.ev.launch_velocity.y);
+    CHECK(r.s.velocity.y == 0.0f || r.s.velocity.y > 0.0f, "velocity is the game's business");
+}
+
 int main(void) {
     struct { const char *name; void (*fn)(void); } tests[] = {
         { "falls and rests on floor", test_falls_and_rests_on_floor },
@@ -428,6 +462,8 @@ int main(void) {
         { "reset teleports", test_reset_teleports },
         { "landing event", test_landing_event },
         { "zero dt is a no-op", test_zero_dt_is_noop },
+        { "head height", test_head_height },
+        { "external flight", test_external_flight },
     };
     unsigned i;
     for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {

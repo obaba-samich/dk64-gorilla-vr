@@ -49,6 +49,7 @@ typedef struct gtl_params {
     float body_radius;
     float hand_radius;
     float arm_length;          /* hands never get further than this from the head */
+    float head_height;         /* head sits this far above the body sphere's centre */
 
     float jump_multiplier;     /* release speed scale */
     float max_jump_speed;      /* units per second */
@@ -85,6 +86,9 @@ typedef struct gtl_input {
     gtl_vec3 hand[2];
     int hand_enabled[2];       /* 0 while a hand is busy (holding a gun, an instrument...) */
     int mode;
+    int external_flight;       /* the game owns gravity and free flight: when no hand holds,
+                                  only room-scale moves the body and a release just reports
+                                  the launch velocity */
     float dt;
 } gtl_input;
 

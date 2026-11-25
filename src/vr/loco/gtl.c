@@ -36,6 +36,7 @@ void gtl_default_params(gtl_params *p) {
     p->body_radius = 4.0f;
     p->hand_radius = 1.2f;
     p->arm_length = 14.0f;
+    p->head_height = 0.0f;
 
     p->jump_multiplier = 1.1f;
     p->max_jump_speed = 150.0f;
@@ -145,7 +146,7 @@ static gtl_vec3 hand_target(const gtl_world *w, const gtl_params *p, const gtl_s
                             const gtl_input *in, int h) {
     gtl_vec3 rel = vsub(in->hand[h], in->head);
     rel = vclamp_len(w, rel, p->arm_length);
-    return vadd(s->body, rel);
+    return vadd(vadd(s->body, v3(0.0f, p->head_height, 0.0f)), rel);
 }
 
 void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in) {
@@ -322,6 +323,9 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
         s->velocity = v3(0, 0, 0);
         history_push(s, p, vmul(vsub(s->body, moved_from), 1.0f / dt));
         s->grounded = ground;
+    } else if (in->external_flight && in->mode != GTL_MODE_WATER) {
+        /* the game moves the body; the caller syncs s->body from it before the next step */
+        s->velocity = v3(0, 0, 0);
     } else {
         /* 3. free flight */
         int ground = 0;
