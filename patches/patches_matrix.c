@@ -1,4 +1,5 @@
 #include "common_structs.h"
+#include "vr_state.h"
 
 extern u8 skip_interpolation;
 
@@ -842,6 +843,11 @@ RECOMP_PATCH Gfx *func_global_asm_80637B6C(Struct80635468_arg1 *arg0, Gfx *dl, f
         sp1AD = -1;
     }
     cur_drawn_model_transform_id = MTXTAG_PROPSPRITE + arg0->unk4C;
+    // @recomp: VR. Sprite props turn to the game camera's position; in the headset they face the
+    // viewer instead, upright when the game keeps them upright.
+    if (recomp_vr_is_active()) {
+        cur_drawn_model_transform_id |= MTXTAG_VR_BILLBOARD_MATCHING;
+    }
     cur_model_transform_id_offset = 0;
     gSPMatrix(dl++, &identity_fixed_mtx, G_MTX_PUSH | G_MTX_MUL | G_MTX_MODELVIEW);
     dl = set_model_matrix_group(dl, NULL, FALSE, &pushed_matrix_group);
@@ -1350,6 +1356,16 @@ RECOMP_PATCH Gfx* func_global_asm_807007B8(Gfx* dl) {
     u8 temp_v0;
     Struct807FD808 *temp_t2;
 
+    // @recomp: VR. The flare is a screen-space sprite at the projected sun position and would
+    // ride with the head, so it is not drawn. The countdowns it would have run down still tick.
+    if (recomp_vr_is_active()) {
+        for (i = 0; i < D_global_asm_80754BC0; i++) {
+            if (D_global_asm_807FD838[D_global_asm_807444FC ^ 1][i]) {
+                D_global_asm_807FD838[D_global_asm_807444FC ^ 1][i]--;
+            }
+        }
+        return dl;
+    }
     if (D_global_asm_80754BC0 != 0) {
         gDPPipeSync(dl++);
         dl = func_global_asm_8070068C(dl);
