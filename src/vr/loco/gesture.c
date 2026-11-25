@@ -281,7 +281,8 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         hold |= GST_N64_A;
         out->events |= GST_EV_TWIRL;
     }
-    if (p->crouch_by_ducking && !in->airborne && !in->in_water
+    /* ducking to reach the ground while rowing is not a crouch: only with both hands free */
+    if (p->crouch_by_ducking && !in->airborne && !in->in_water && !in->touching[0] && !in->touching[1]
         && in->head[1] < s->standing_y - p->duck_depth) {
         hold |= GST_N64_Z;
         out->events |= GST_EV_CROUCH;

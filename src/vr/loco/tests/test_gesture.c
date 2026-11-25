@@ -289,6 +289,11 @@ static void test_duck_crouch(void) {
     r.in.head[1] = -0.1f;
     rig_run(&r, 1);
     CHECK(!(r.out.hold & GST_N64_Z), "crouch while standing");
+    r.in.head[1] = -0.6f;
+    r.in.touching[0] = 1;
+    rig_run(&r, 1);
+    CHECK(!(r.out.hold & GST_N64_Z), "crouch while a hand is on the ground (rowing low)");
+    r.in.touching[0] = 0;
     r.p.crouch_by_ducking = 0;
     r.in.head[1] = -0.6f;
     rig_run(&r, 1);
