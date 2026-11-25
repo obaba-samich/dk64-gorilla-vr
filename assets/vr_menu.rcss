@@ -240,6 +240,7 @@ div, span { box-sizing: border-box; }
 .me .g { width: 60px; font-size: 46px; color: rgb(255, 255, 255); text-align: center; }
 .me .g.two { width: 92px; font-size: 40px; }
 .me .mt { margin-left: 14px; font-size: 26px; color: rgb(204, 204, 204); white-space: nowrap; }
+.me .mb { width: 170px; font-size: 24px; font-weight: 700; color: rgb(255, 255, 255); text-align: right; white-space: nowrap; }
 .me.wide { margin-top: 6px; }
 
 /* ---- C: the quick menu ---- */

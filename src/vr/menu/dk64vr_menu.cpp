@@ -1112,6 +1112,32 @@ std::string Model::renderRowControl(const Row &r, bool tile) const {
             out += "<div class=\"" + cls("recentre", "p-btn primary") + "\"" + attrAct("recentre", true) + ">Recentre now</div>";
             break;
         case Kind::Map: {
+            if ((settings.get("gorilla_mode") != 0.0) && (settings.get("gestures") != 0.0)) {
+                // Arm locomotion with gestures: the Quest Touch buttons by name, then the moves
+                static const struct { const char *b; const char *t; } arms[] = {
+                    { "A", "Jump, talk, confirm" }, { "B", "Attack (N64 B)" }, { "X", "C-left" }, { "Y", "C-right" },
+                    { "L trigger", "Z (crouch)" }, { "R trigger", "R; fires the gun when it's out" },
+                    { "R stick", "Turn; up / down = C-up / C-down" }, { "Menu", "Pause (Start)" },
+                    { "L stick click", "Recomp menu; hold 1 s to recentre" },
+                };
+                static const struct { const char *b; const char *t; } moves[] = {
+                    { "Push / pull", "Hands on the ground or a ledge move you" }, { "Let go", "Mid-swing: throws you" },
+                    { "Jab", "Punch. Both hands: Kong special" }, { "Hands down", "Hard, in the air: Simian Slam" },
+                    { "Grip at hip", "Gun hand: gun. Other: orange, throw it" }, { "Hands up front", "Both grips: instrument" },
+                    { "Duck", "Crouch (Z)" }, { "Arms wide", "In the air: twirl / glide" },
+                    { "Grip overhead", "On a vine, tree, ladder: pull to climb" },
+                };
+                out += "<div class=\"p-map\"><div class=\"mc\">";
+                for (const auto &e : arms) {
+                    out += std::string("<div class=\"me\"><span class=\"mb\">") + e.b + "</span><span class=\"mt\">" + e.t + "</span></div>";
+                }
+                out += "</div><div class=\"mc\">";
+                for (const auto &e : moves) {
+                    out += std::string("<div class=\"me\"><span class=\"mb\">") + e.b + "</span><span class=\"mt\">" + e.t + "</span></div>";
+                }
+                out += std::string("</div></div><div class=\"me wide\"><span class=\"mb\">Menu + L stick click</span><span class=\"mt\">Hold 0.5 s: VR settings, from anywhere</span></div>");
+                break;
+            }
             static const struct { const char *g; const char *t; } map[] = {
                 { GA, "Jump, confirm" }, { GX, "Attack (N64 B)" }, { GY, "Camera left (C-left)" }, { GB, "Camera right (C-right)" },
                 { GLB, "Zoom (C-down)" }, { GRB, "First person (C-up)" }, { GLT, "Crouch (Z)" }, { GRT, "Centre camera (R), menu click" },
