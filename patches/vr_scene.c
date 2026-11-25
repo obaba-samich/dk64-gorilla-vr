@@ -1,5 +1,6 @@
 #include "common_structs.h"
 #include "vr_state.h"
+#include "vr_gorilla.h"
 
 // Scene reporting for the VR renderer. vr_frame_hook runs once per game frame (it is called from
 // the calculateLagBoost patch in patches_main.c, which the main loop reaches exactly once per
@@ -176,6 +177,10 @@ static void vr_fill_camera(VrGameState *s) {
 // The game's "show this HUD counter" (hud.c): item, freeze, delay.
 void func_global_asm_806F8BC4(s32 HUDItemIndex, u8 arg1, s32 arg2);
 
+s32 vr_current_scene(void) {
+    return vr_state.scene;
+}
+
 void vr_frame_hook(void) {
     s32 scene;
     s32 active;
@@ -196,6 +201,7 @@ void vr_frame_hook(void) {
     }
     vr_state.sky_dome = vr_sky_dome_drawn;
     vr_sky_dome_drawn = 0;
+    vr_gorilla_post_frame();
     recomp_vr_publish_game_state(&vr_state);
 
     active = recomp_vr_is_active();

@@ -1,0 +1,615 @@
+// Arm locomotion in the game.
+//
+// Each game frame, before the actors update:
+//   1. read the controllers from the host (metres, play space),
+//   2. turn them into world units around the body, with the body's heading,
+//   3. run the locomotion core (src/vr/loco/gtl.c) against DK64's own floors,
+//   4. leave the resulting displacement for the player's movement step to apply.
+// The player's movement step (func_global_asm_806651FC, patched below) applies that displacement
+// in place of the game's own while a hand holds on, so DK64's wall and floor passes, loading
+// zones and triggers all see an ordinary move. With no hand holding, the game's own gravity,
+// jumping, slopes and landing run as usual. A release asks the host to press A for a jump and
+// then swaps the jump's speed for the throw's.
+//
+// After the frame we publish where the head and hands ended up, for the camera and hand drawing.
+#include "common_structs.h"
+#include "vr_state.h"
+#include "vr_gorilla.h"
+#include "../src/vr/loco/gtl.h"
+
+extern u8 is_cutscene_active;
+extern u8 cc_number_of_players;
+extern u8 current_character_index[];
+
+// floor under x,z below y (and the surface/water it found, read right after)
+u8 func_global_asm_8066635C(Actor *arg0, f32 x, f32 y, f32 z, f32 *arg4);
+u8 func_global_asm_80666AE0(void);
+u8 func_global_asm_8066715C(f32 *arg0);
+// sin and cos of a 0..4095 heading
+f32 func_global_asm_80612794(s16 arg0);
+f32 func_global_asm_80612790(s16 arg0);
+
+s32 vr_current_scene(void);
+
+// ---------------------------------------------------------------------------------------------
+// small maths, no libc here
+
+#define VR_PI 3.14159265f
+#define VR_TWO_PI 6.28318531f
+
+static f32 vr_sqrt(f32 x) {
+    return x > 0.0f ? __builtin_sqrtf(x) : 0.0f;
+}
+
+static f32 vr_wrap(f32 a) {
+    while (a > VR_PI) {
+        a -= VR_TWO_PI;
+    }
+    while (a < -VR_PI) {
+        a += VR_TWO_PI;
+    }
+    return a;
+}
+
+// Good to about 1e-4, plenty for headings.
+static f32 vr_sin(f32 a) {
+    f32 a2;
+    a = vr_wrap(a);
+    if (a > 0.5f * VR_PI) {
+        a = VR_PI - a;
+    } else if (a < -0.5f * VR_PI) {
+        a = -VR_PI - a;
+    }
+    a2 = a * a;
+    return a * (1.0f - a2 / 6.0f * (1.0f - a2 / 20.0f * (1.0f - a2 / 42.0f * (1.0f - a2 / 72.0f))));
+}
+
+static f32 vr_cos(f32 a) {
+    return vr_sin(a + 0.5f * VR_PI);
+}
+
+static f32 vr_atan2(f32 y, f32 x) {
+    f32 ax = x < 0 ? -x : x, ay = y < 0 ? -y : y, a, s, r;
+    if (ax < 1e-9f && ay < 1e-9f) {
+        return 0.0f;
+    }
+    a = (ax < ay) ? ax / ay : ay / ax;
+    s = a * a;
+    r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
+    if (ay > ax) {
+        r = 0.5f * VR_PI - r;
+    }
+    if (x < 0) {
+        r = VR_PI - r;
+    }
+    if (y < 0) {
+        r = -r;
+    }
+    return r;
+}
+
+// Game headings: 0..4095 is a full turn, forward is (sin, cos) in x/z.
+static s16 vr_heading_to_game(f32 yaw) {
+    s32 h = (s32)(vr_wrap(yaw) * (4096.0f / VR_TWO_PI));
+    return (s16)(h & 0xFFF);
+}
+
+static f32 vr_game_to_heading(s16 h) {
+    return (f32)(h & 0xFFF) * (VR_TWO_PI / 4096.0f);
+}
+
+// ---------------------------------------------------------------------------------------------
+// DK64's collision as a sphere sweep for the locomotion core.
+//
+// The game answers "what is the highest floor under x,z below height y" (the same query the
+// camera and actors use), and reports the floor's surface and the water level after it. Floors
+// cover the ground, slopes, platform tops, ledges and roofs. From that:
+//   - a sphere whose bottom dips under the floor below it is touching that floor;
+//   - a sphere that moves sideways into a spot whose floor top sits above its bottom (but not
+//     too far above, or it is an overhang) has run into the side of a step, ledge or box: a wall.
+// Flat walls with nothing on top (room walls) are left to the game's own wall pass for the body.
+
+typedef struct VrSweepCtx {
+    Actor *player;
+    f32 wall_window;   // how far above a sphere a floor top can be and still count as a wall
+} VrSweepCtx;
+
+static VrSweepCtx vr_sweep_ctx;
+static u8 vr_last_surface;
+
+static s32 vr_floor_at(Actor *player, f32 x, f32 z, f32 from_y, f32 *out) {
+    f32 y = from_y;
+    u8 found = func_global_asm_8066635C(player, x, from_y, z, &y);
+    vr_last_surface = func_global_asm_80666AE0();
+    if (!found || y > from_y) {
+        return 0;
+    }
+    *out = y;
+    return 1;
+}
+
+// Surface ids worth special handling. Filled in from the [vr-loco] surface log during play
+// testing; everything else grips fully.
+static f32 vr_surface_slip(u8 surface) {
+    (void)surface;
+    return 0.0f;
+}
+
+// Is a sphere of radius r at p touching geometry? If so, fill the normal.
+static s32 vr_touching(VrSweepCtx *c, gtl_vec3 p, gtl_vec3 came_from, f32 r, gtl_hit *hit) {
+    f32 floor;
+    f32 top = p.y + r + c->wall_window;
+    if (!vr_floor_at(c->player, p.x, p.z, top, &floor)) {
+        return 0;
+    }
+    if (floor <= p.y - r) {
+        return 0;
+    }
+    hit->surface = vr_last_surface;
+    hit->slip = vr_surface_slip(vr_last_surface);
+    if (floor > p.y - r + r * 1.5f) {
+        // the floor top here is well above the sphere's bottom: we went into a side
+        f32 dx = came_from.x - p.x, dz = came_from.z - p.z;
+        f32 l = vr_sqrt(dx * dx + dz * dz);
+        if (l < 1e-4f) {
+            return 0; // straight down into a step's side can't happen; ignore
+        }
+        hit->normal.x = dx / l;
+        hit->normal.y = 0.0f;
+        hit->normal.z = dz / l;
+    } else {
+        // a floor: slope normal from two neighbouring samples
+        f32 e = r * 0.5f, fx, fz;
+        f32 nx = 0.0f, nz = 0.0f, l;
+        if (vr_floor_at(c->player, p.x + e, p.z, top, &fx)) {
+            nx = -(fx - floor) / e;
+        }
+        if (vr_floor_at(c->player, p.x, p.z + e, top, &fz)) {
+            nz = -(fz - floor) / e;
+        }
+        l = vr_sqrt(nx * nx + 1.0f + nz * nz);
+        hit->normal.x = nx / l;
+        hit->normal.y = 1.0f / l;
+        hit->normal.z = nz / l;
+    }
+    return 1;
+}
+
+static int vr_sweep(void *user, gtl_vec3 a, gtl_vec3 b, float r, gtl_hit *hit) {
+    VrSweepCtx *c = (VrSweepCtx *)user;
+    gtl_vec3 d, p, prev;
+    f32 len, lo, hi;
+    s32 steps, i, k;
+
+    d.x = b.x - a.x; d.y = b.y - a.y; d.z = b.z - a.z;
+    len = vr_sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+    steps = (s32)(len / (r * 0.75f)) + 1;
+    if (steps > 12) {
+        steps = 12;
+    }
+    prev = a;
+    for (i = 1; i <= steps; i++) {
+        f32 t = (f32)i / (f32)steps;
+        p.x = a.x + d.x * t; p.y = a.y + d.y * t; p.z = a.z + d.z * t;
+        if (vr_touching(c, p, prev, r, hit)) {
+            // moving away from what we are already in is not a hit
+            if (i == 1 && (d.x * hit->normal.x + d.y * hit->normal.y + d.z * hit->normal.z) >= 0.0f) {
+                return 0;
+            }
+            // narrow down where along the segment we first touch
+            lo = (f32)(i - 1) / (f32)steps;
+            hi = t;
+            for (k = 0; k < 4; k++) {
+                gtl_hit tmp;
+                f32 m = 0.5f * (lo + hi);
+                gtl_vec3 q;
+                q.x = a.x + d.x * m; q.y = a.y + d.y * m; q.z = a.z + d.z * m;
+                if (vr_touching(c, q, prev, r, &tmp)) {
+                    hi = m;
+                } else {
+                    lo = m;
+                }
+            }
+            hit->t = lo;
+            return 1;
+        }
+        prev = p;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// state
+
+static gtl_state vr_loco;
+static gtl_params vr_params;
+static gtl_world vr_world;
+static VrHands vr_hands;
+static VrBody vr_body;
+static s32 vr_active;              // arm locomotion drove the player this frame
+static s32 vr_hide_body = 1;       // first person: don't draw the player's own model
+static f32 vr_yaw;                 // body heading (radians, game convention)
+static f32 vr_height;              // head above the feet, world units (per Kong)
+static s32 vr_initialised;
+static Actor *vr_player_seen;
+static u32 vr_frame;
+
+// For the movement patch: what to add to the player this frame.
+static s32 vr_drive;               // 1 = replace the game's move with vr_disp
+static gtl_vec3 vr_disp;
+
+// Pending throw, waiting for the game to start the jump.
+static s32 vr_launch_pending;
+static gtl_vec3 vr_launch_v;
+static s32 vr_launch_count;
+
+static f32 vr_sweep_sqrt(f32 v) {
+    return vr_sqrt(v);
+}
+
+// Kong body tuning (units at DK's scale; the actor's model scale adjusts them).
+typedef struct VrKongBody {
+    f32 height;       // feet to eyes
+    f32 radius;       // body sphere
+    f32 arm;          // arm reach multiplier
+    f32 launch;       // launch multiplier
+} VrKongBody;
+
+static const VrKongBody vr_kong_bodies[5] = {
+    { 21.0f, 5.0f, 1.00f, 1.00f },  // DK: the baseline
+    { 16.0f, 4.0f, 0.95f, 1.15f },  // Diddy: lighter, faster
+    { 20.0f, 4.5f, 1.25f, 0.95f },  // Lanky: long arms
+    { 15.0f, 3.8f, 0.90f, 1.10f },  // Tiny: small
+    { 23.0f, 6.0f, 1.05f, 0.85f },  // Chunky: heavy
+};
+
+static const VrKongBody *vr_kong(void) {
+    s32 k = current_character_index[0];
+    if (k < 0 || k > 4) {
+        k = 0;
+    }
+    return &vr_kong_bodies[k];
+}
+
+// Play space (metres, x right, y up, z back) to world units around the body heading.
+static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
+    gtl_vec3 o;
+    f32 s = vr_sin(vr_yaw), c = vr_cos(vr_yaw);
+    f32 fwd = -v[2] * k, right = v[0] * k;
+    // forward = (sin, cos), right = (-cos, sin)
+    o.x = s * fwd - c * right;
+    o.y = v[1] * k;
+    o.z = c * fwd + s * right;
+    return o;
+}
+
+static s32 vr_should_drive(Actor *player) {
+    s32 scene = vr_current_scene();
+    if (!vr_hands.valid || !vr_hands.gorilla || player == NULL) {
+        return 0;
+    }
+    if (cc_number_of_players > 1) {
+        return 0;
+    }
+    if (scene != VR_SCENE_GAMEPLAY && scene != VR_SCENE_FIRST_PERSON) {
+        return 0;
+    }
+    return 1;
+}
+
+static void vr_setup_params(Actor *player) {
+    const VrKongBody *kb = vr_kong();
+    f32 scale = 1.0f;
+    if (player->animation_state != NULL && player->animation_state->scale_y > 0.0f) {
+        scale = player->animation_state->scale_y / 0.15f;  // Hunky Chunky, Mini Monkey
+    }
+    gtl_default_params(&vr_params);
+    vr_params.body_radius = kb->radius * scale;
+    vr_params.hand_radius = 1.2f * scale;
+    vr_height = kb->height * scale;
+    vr_params.head_height = vr_height - vr_params.body_radius;
+    vr_params.arm_length = 0.9f * vr_hands.world_scale * vr_hands.arm_scale * kb->arm;
+    vr_params.jump_multiplier = vr_hands.jump_multiplier * kb->launch;
+    vr_params.max_jump_speed = vr_hands.max_jump_speed * vr_hands.world_scale;
+    vr_params.min_launch_speed = 0.8f * vr_hands.world_scale;
+    vr_params.unstick_distance = 0.2f * vr_hands.world_scale;
+    vr_params.gravity = 0.0f;  // the game's own
+    vr_sweep_ctx.player = player;
+    vr_sweep_ctx.wall_window = 1.0f * vr_hands.world_scale;
+}
+
+static void vr_build_input(gtl_input *in, f32 dt) {
+    f32 k = vr_hands.world_scale * vr_hands.arm_scale;
+    s32 h;
+    in->head = vr_play_to_world(vr_hands.head, vr_hands.world_scale);
+    for (h = 0; h < 2; h++) {
+        // the hand's offset from the head gets the arm scale, the head itself does not
+        f32 rel[3];
+        gtl_vec3 r;
+        rel[0] = vr_hands.hand[h][0] - vr_hands.head[0];
+        rel[1] = vr_hands.hand[h][1] - vr_hands.head[1];
+        rel[2] = vr_hands.hand[h][2] - vr_hands.head[2];
+        r = vr_play_to_world(rel, k);
+        in->hand[h].x = in->head.x + r.x;
+        in->hand[h].y = in->head.y + r.y;
+        in->hand[h].z = in->head.z + r.z;
+        in->hand_enabled[h] = 1;
+    }
+    in->dt = dt;
+    in->external_flight = 1;
+    in->mode = GTL_MODE_AIR_GROUND;
+}
+
+static gtl_vec3 vr_feet_to_body(Actor *p) {
+    gtl_vec3 b;
+    b.x = p->x_position;
+    b.y = p->y_position + vr_params.body_radius;
+    b.z = p->z_position;
+    return b;
+}
+
+void vr_gorilla_pre_frame(void) {
+    Actor *player;
+    gtl_input in;
+    gtl_events ev;
+    gtl_vec3 before;
+    f32 dt;
+    s32 turn;
+
+    vr_drive = 0;
+    vr_active = 0;
+    if (!recomp_vr_is_active() || character_change_array == NULL) {
+        vr_initialised = 0;
+        return;
+    }
+    recomp_vr_get_hands(&vr_hands);
+    player = character_change_array[0].playerPointer;
+    if (!vr_should_drive(player)) {
+        vr_initialised = 0;
+        return;
+    }
+
+    dt = 1.0f / 30.0f;
+    vr_setup_params(player);
+    vr_world.user = &vr_sweep_ctx;
+    vr_world.sweep = vr_sweep;
+    vr_world.sqrt_fn = vr_sweep_sqrt;
+    vr_build_input(&in, dt);
+
+    // snap / smooth turns turn the body; the host shows them at once
+    turn = recomp_vr_take_turn();
+    if (turn != 0) {
+        vr_yaw = vr_wrap(vr_yaw - (f32)turn * (VR_PI / 180.0f));
+        vr_build_input(&in, dt);
+    }
+
+    if (!vr_initialised || player != vr_player_seen) {
+        vr_yaw = vr_game_to_heading(player->y_rotation);
+        vr_build_input(&in, dt);
+        gtl_reset(&vr_loco, vr_feet_to_body(player), &in);
+        vr_initialised = 1;
+        vr_player_seen = player;
+        recomp_printf("[vr-loco] body reset at %.1f %.1f %.1f, kong %d\n", player->x_position,
+            player->y_position, player->z_position, current_character_index[0]);
+    }
+
+    // The game is authoritative for where the body is: walls, platforms, warps.
+    before = vr_feet_to_body(player);
+    {
+        f32 dx = before.x - vr_loco.body.x, dy = before.y - vr_loco.body.y, dz = before.z - vr_loco.body.z;
+        if (dx * dx + dy * dy + dz * dz > 60.0f * 60.0f) {
+            gtl_reset(&vr_loco, before, &in);  // warped (loading zone, warp pad, cutscene)
+        } else {
+            vr_loco.body = before;
+        }
+    }
+
+    gtl_step(&vr_loco, &vr_params, &vr_world, &in, &ev);
+
+    vr_disp.x = vr_loco.body.x - before.x;
+    vr_disp.y = vr_loco.body.y - before.y;
+    vr_disp.z = vr_loco.body.z - before.z;
+    vr_drive = vr_loco.hand[0].touching || vr_loco.hand[1].touching
+        || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f;
+    vr_active = 1;
+
+    if (ev.launched) {
+        f32 sp = vr_sqrt(ev.launch_velocity.x * ev.launch_velocity.x + ev.launch_velocity.y * ev.launch_velocity.y
+            + ev.launch_velocity.z * ev.launch_velocity.z);
+        vr_launch_v = ev.launch_velocity;
+        if (ev.launch_velocity.y > 0.35f * sp) {
+            // thrown upwards: let the game start a real jump (A), then swap in our speed
+            vr_launch_pending = 6;  // frames to wait for the game's jump to start
+            vr_launch_count++;
+        } else {
+            // thrown along the ground: the game's own run speed carries it and slows it down
+            f32 scale_y = (player->animation_state != NULL) ? player->animation_state->scale_y : 0.15f;
+            f32 per_frame = 6.0f / (scale_y * 30.0f);
+            f32 vh = vr_sqrt(vr_launch_v.x * vr_launch_v.x + vr_launch_v.z * vr_launch_v.z);
+            player->unkB8 = vh * per_frame;
+            if (vh > 0.01f) {
+                player->unkEE = vr_heading_to_game(vr_atan2(vr_launch_v.x, vr_launch_v.z));
+            }
+        }
+        vr_body.launch_speed = vr_sqrt(ev.launch_velocity.x * ev.launch_velocity.x
+            + ev.launch_velocity.y * ev.launch_velocity.y + ev.launch_velocity.z * ev.launch_velocity.z);
+        recomp_printf("[vr-loco] launch %.1f %.1f %.1f\n", ev.launch_velocity.x, ev.launch_velocity.y,
+            ev.launch_velocity.z);
+    }
+    if (vr_launch_pending > 0) {
+        vr_launch_pending--;
+        if (player->y_velocity > 0.0f) {
+            // the game has started a jump: give it the throw's speed instead
+            f32 scale_y = (player->animation_state != NULL) ? player->animation_state->scale_y : 0.15f;
+            f32 per_frame = 6.0f / (scale_y * 30.0f);
+            f32 vh = vr_sqrt(vr_launch_v.x * vr_launch_v.x + vr_launch_v.z * vr_launch_v.z);
+            player->y_velocity = vr_launch_v.y * per_frame;
+            player->unkB8 = vh * per_frame;
+            if (vh > 0.01f) {
+                player->unkEE = vr_heading_to_game(vr_atan2(vr_launch_v.x, vr_launch_v.z));
+                player->y_rotation = player->unkEE;
+            }
+            vr_launch_pending = 0;
+            recomp_printf("[vr-loco] jump started, speed set to %.2f up %.2f along\n", player->y_velocity, player->unkB8);
+        }
+    }
+    if ((vr_frame % 60) == 0) {
+        recomp_printf("[vr-loco] at %.1f %.1f %.1f state %d vy %.2f holding %d%d\n", player->x_position,
+            player->y_position, player->z_position, player->control_state, player->y_velocity,
+            vr_loco.hand[0].touching, vr_loco.hand[1].touching);
+    }
+    {
+        s32 h;
+        for (h = 0; h < 2; h++) {
+            vr_body.haptic[h] = 0;
+            if (ev.hand_contact[h]) {
+                f32 strength = ev.contact_speed[h] / (2.0f * vr_hands.world_scale);
+                vr_body.haptic[h] = (s32)(20.0f + 80.0f * (strength > 1.0f ? 1.0f : strength));
+                recomp_printf("[vr-loco] hand %d on surface %d\n", h, vr_loco.hand[h].surface);
+            }
+        }
+    }
+}
+
+void vr_gorilla_post_frame(void) {
+    Actor *player;
+    s32 h;
+    f32 s, c;
+
+    vr_frame++;
+    vr_body.frame = vr_frame;
+    vr_body.active = vr_active;
+    if (vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
+        player = character_change_array[0].playerPointer;
+        // face where the head looks, so guns and moves go that way
+        if (!vr_launch_pending && player->y_velocity <= 0.0f) {
+            player->y_rotation = vr_heading_to_game(vr_yaw + vr_hands.head_yaw);
+        }
+        // camera: the tracked head offset is added by the host at display rate, so publish the
+        // standing eye point over the feet
+        s = vr_sin(vr_yaw);
+        c = vr_cos(vr_yaw);
+        // the body already moved with the tracked head (room scale); the host adds the live
+        // head offset at display rate, so take this frame's offset back out
+        {
+            gtl_vec3 off = vr_play_to_world(vr_hands.head, vr_hands.world_scale);
+            vr_body.head[0] = player->x_position - off.x;
+            vr_body.head[1] = player->y_position + vr_height - off.y;
+            vr_body.head[2] = player->z_position - off.z;
+        }
+        vr_body.yaw = vr_yaw;
+        for (h = 0; h < 2; h++) {
+            vr_body.hand[h][0] = vr_loco.hand[h].pos.x;
+            vr_body.hand[h][1] = vr_loco.hand[h].pos.y;
+            vr_body.hand[h][2] = vr_loco.hand[h].pos.z;
+            vr_body.touching[h] = vr_loco.hand[h].touching;
+        }
+        vr_body.speed = vr_sqrt(vr_disp.x * vr_disp.x + vr_disp.y * vr_disp.y + vr_disp.z * vr_disp.z) * 30.0f;
+        (void)s;
+        (void)c;
+    }
+    vr_body.launch_count = vr_launch_count;
+    recomp_vr_publish_body(&vr_body);
+}
+
+// @recomp: the actor movement step. For the player while arm locomotion holds on, the move is the
+// hands' displacement instead of speed along the heading; everything after it (walls, floors,
+// triggers) runs as normal. Otherwise unchanged from the decomp.
+extern u32 D_global_asm_80744478;
+
+RECOMP_PATCH void func_global_asm_806651FC(Actor *arg0) {
+    f32 sp28;
+    f32 temp_f2;
+    f32 var_f0;
+    f32 var_f20;
+
+    if (vr_drive && character_change_array != NULL && arg0 == character_change_array[0].playerPointer) {
+        arg0->x_position += vr_disp.x;
+        arg0->y_position += vr_disp.y;
+        arg0->z_position += vr_disp.z;
+        if (vr_loco.hand[0].touching || vr_loco.hand[1].touching) {
+            // held up by the hands: don't build falling speed
+            arg0->y_velocity = 0.0f;
+            arg0->unkB8 = 0.0f;
+        }
+        vr_drive = 0;
+        return;
+    }
+
+    var_f20 = arg0->unkB8;
+    if (arg0->unkFC != 0) {
+        var_f20 = MIN(arg0->unkFA, var_f20);
+    }
+    if (arg0->animation_state != NULL) {
+        var_f0 = arg0->animation_state->scale_y;
+    } else {
+        var_f0 = 0.15f;
+    }
+    temp_f2 = var_f0 * 0.16666666675;
+    sp28 = temp_f2;
+    if ((arg0->interactable & 4) && (arg0->unk6A & 4)) {
+        sp28 = temp_f2 * 0.5;
+    }
+    var_f20 *= sp28;
+    if (arg0->unk6A & 1) {
+        var_f20 *= ABS(func_global_asm_80612794(arg0->unkDA));
+    }
+    if (arg0->object_properties_bitfield & 0x400000) {
+        var_f20 *= (u32)D_global_asm_80744478 * 0.5;
+    }
+    arg0->x_position += var_f20 * func_global_asm_80612794(arg0->unkEE);
+    arg0->z_position += var_f20 * func_global_asm_80612790(arg0->unkEE);
+    arg0->y_position += arg0->y_velocity * sp28;
+}
+
+// @recomp: renderActor builds an actor's model matrix (decomp: code_35000.c). In first person the
+// player's own model sits around the camera, so collapse it to a point: nothing to see, and the
+// game keeps running every other part of the player as normal.
+void func_global_asm_806317D4(Actor *arg0, f32 arg1[4][4], f32 arg2, f32 arg3, f32 arg4);
+void func_global_asm_8063162C(Actor *arg0, f32 arg1[4][4]);
+void guMtxCatF(float mf[4][4], float nf[4][4], float res[4][4]);
+
+RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
+    f32 sp78[4][4];
+    s16 phi_a0;
+    s16 temp_f2;
+    s16 temp;
+    s16 temp_t7;
+    s16 temp_yrot;
+
+    if ((arg0->object_properties_bitfield & 1)) {
+        phi_a0 = (arg0->y_rotation - arg0->unkDC) & 0xFFF;
+        if (phi_a0 >= 0x801) {
+            phi_a0 = phi_a0 - 0x1000;
+        }
+        temp_f2 = (0x400 - arg0->unkDE) & 0xFFF;
+        temp = func_global_asm_80612790(phi_a0) * temp_f2;
+        temp = (temp + arg0->z_rotation) & 0xFFF;
+        temp_t7 = ((s16)(func_global_asm_80612794(phi_a0) * temp_f2) + arg0->x_rotation) & 0xFFF;
+        temp_yrot = arg0->y_rotation;
+        if (arg1 != 0) {
+            func_global_asm_806317D4(arg0, sp78, temp_t7, temp, temp_yrot);
+            guMtxCatF((void *)&arg0->unkC, sp78, (void *)&arg0->unkC);
+        } else {
+            func_global_asm_806317D4(arg0, (void *)&arg0->unkC, temp_t7, temp, temp_yrot);
+        }
+    } else {
+        if (arg1 != 0) {
+            func_global_asm_8063162C(arg0, sp78);
+            guMtxCatF((void *)&arg0->unkC, sp78, (void *)&arg0->unkC);
+        } else {
+            func_global_asm_8063162C(arg0, (void *)&arg0->unkC);
+        }
+    }
+
+    if (vr_active && vr_hide_body && character_change_array != NULL
+        && arg0 == character_change_array[0].playerPointer) {
+        f32 (*m)[4] = (f32 (*)[4])(void *)&arg0->unkC;
+        s32 r, c;
+        for (r = 0; r < 3; r++) {
+            for (c = 0; c < 3; c++) {
+                m[r][c] *= 0.0001f;
+            }
+        }
+    }
+}

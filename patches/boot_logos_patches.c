@@ -2,6 +2,7 @@
 #include "options.h"
 #include "patches_main.h"
 #include "ui_funcs.h"
+#include "vr_gorilla.h"
 
 Gfx gfxArena[0x200];
 u8 redNintendoLogoTexture[320 * 240 * 2];
@@ -339,6 +340,7 @@ RECOMP_PATCH void func_global_asm_805FBFF4(s32 arg0) {
 #ifdef DEBUG_WARP
             menuMain();
 #endif
+            vr_gorilla_pre_frame(); // @recomp: VR arm locomotion, before the actors update
             func_global_asm_805FC2B0();
             break;
         }
