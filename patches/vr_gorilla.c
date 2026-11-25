@@ -572,7 +572,11 @@ void vr_gorilla_pre_frame(void) {
         f32 floor_y, water_y = 0.0f;
         f32 head_y = vr_loco.body.y + vr_params.head_height;
         vr_floor_at(player, vr_loco.body.x, vr_loco.body.z, head_y + 2000.0f, &floor_y);
-        if (func_global_asm_8066715C(&water_y) && head_y < water_y) {
+        s32 has_water = func_global_asm_8066715C(&water_y);
+        // swimming at the surface keeps the head just above the water, so count a body that's
+        // in it up to the eyes too, and only paddle along the surface then
+        vr_surface_swim = has_water && head_y >= water_y && vr_loco.body.y < water_y;
+        if (has_water && (head_y < water_y || vr_surface_swim)) {
             in.mode = GTL_MODE_WATER;
             in.external_flight = 0;
             vr_params.gravity = 0.0f;
@@ -586,13 +590,24 @@ void vr_gorilla_pre_frame(void) {
         }
     }
 
+    if (vr_body_mode == VR_BODY_CLIMB) {
+        // on a tree, ladder or vine the game holds the player; the hands only climb (stick)
+        in.hand_enabled[0] = in.hand_enabled[1] = 0;
+        in.mode = GTL_MODE_FROZEN;
+    }
     gtl_step(&vr_loco, &vr_params, &vr_world, &in, &ev);
 
     vr_disp.x = vr_loco.body.x - before.x;
     vr_disp.y = vr_loco.body.y - before.y;
     vr_disp.z = vr_loco.body.z - before.z;
-    vr_drive = vr_loco.hand[0].touching || vr_loco.hand[1].touching || vr_in_water
-        || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f;
+    if (vr_in_water && vr_surface_swim && vr_disp.y > 0.0f) {
+        // at the surface the game keeps the player afloat; paddling only moves along it (down
+        // still dives)
+        vr_disp.y = 0.0f;
+        vr_loco.body.y = before.y;
+    }
+    vr_drive = vr_body_mode == VR_BODY_ARMS && (vr_loco.hand[0].touching || vr_loco.hand[1].touching
+        || vr_in_water || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f);
     vr_active = 1;
 
     if (ev.launched) {
