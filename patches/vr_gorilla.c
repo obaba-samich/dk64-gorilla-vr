@@ -275,6 +275,7 @@ static s32 vr_launch_count;
 static gst_state vr_gst;
 static gst_params vr_gst_params;
 static gst_output vr_gst_out;
+static s32 vr_tag_buzz;            // buzz both hands this frame (a gesture or a Kong swap)
 
 // Raw fields the recomp's structs only name as unknowns (offsets from the DK64 decompilation's
 // include/actor.h): actor contact flags (bit 0 on the ground, bit 1 in water) and the player
@@ -486,6 +487,7 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
         vr_gst_out.events &= ~GST_EV_CLIMB;
     }
     if (vr_gst_out.events & ~(GST_EV_CROUCH | GST_EV_CLIMB | GST_EV_TWIRL)) {
+        vr_tag_buzz = 1;  // a short buzz on both hands: the gesture registered
         recomp_printf("[vr-gesture] events %x hold %x\n", vr_gst_out.events, vr_gst_out.hold);
     }
 }
@@ -682,12 +684,16 @@ void vr_gorilla_pre_frame(void) {
         s32 h;
         for (h = 0; h < 2; h++) {
             vr_body.haptic[h] = 0;
+            if (vr_tag_buzz) {
+                vr_body.haptic[h] = 60;
+            }
             if (ev.hand_contact[h]) {
                 f32 strength = ev.contact_speed[h] / (2.0f * vr_hands.world_scale);
                 vr_body.haptic[h] = (s32)(20.0f + 80.0f * (strength > 1.0f ? 1.0f : strength));
                 recomp_printf("[vr-loco] hand %d on surface %d\n", h, vr_loco.hand[h].surface);
             }
         }
+        vr_tag_buzz = 0;
     }
 }
 
