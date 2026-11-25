@@ -366,8 +366,15 @@ InputResult InputMapper::update(const InputSample &raw, const InputConfig &confi
     b |= s.x ? n64::B : 0;
     b |= s.y ? n64::CLeft : 0;
     b |= s.b ? n64::CRight : 0;
-    b |= s.lBumper ? n64::CDown : 0;
-    b |= s.rBumper ? n64::CUp : 0;
+    if (context.gesturesOwnGrips) {
+        const float ry = clamp1(s.rStick[1]);
+        b |= (ry > 0.6f) ? n64::CUp : 0;
+        b |= (ry < -0.6f) ? n64::CDown : 0;
+    }
+    else {
+        b |= s.lBumper ? n64::CDown : 0;
+        b |= s.rBumper ? n64::CUp : 0;
+    }
     b |= s.menu ? n64::Start : 0;
     b |= s.rStickClick ? n64::L : 0;
     b |= s.dpadUp ? n64::DUp : 0;

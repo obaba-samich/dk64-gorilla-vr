@@ -128,6 +128,8 @@ struct InputContext {
     bool stereoPlay = false; // 3D play (gameplay or first person) in stereo: turning applies
     float viewYawRad = 0.0f; // yaw of the movement reference (head or hand) relative to the
                              // game camera's heading, counter-clockwise from above positive
+    bool gesturesOwnGrips = false; // arm locomotion with gestures: the grips are for gestures, and
+                                   // C-up / C-down move to the right stick's up / down
 };
 
 struct InputResult {
