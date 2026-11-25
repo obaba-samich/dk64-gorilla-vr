@@ -45,6 +45,8 @@ typedef struct dk64vr_hands {
     int32_t gestures;        // ability gestures on
     int32_t dominant;        // gun hand, 0 left 1 right
     int32_t duck_crouch;     // ducking holds Z
+    int32_t tag_anywhere;    // left stick flick swaps Kong (experimental)
+    int32_t diag_tag;        // diagnostics: a swap each time this counter changes, freed or not
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.

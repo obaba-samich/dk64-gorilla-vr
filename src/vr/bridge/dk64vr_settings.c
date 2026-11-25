@@ -55,6 +55,8 @@ static const sfvr_setting_key port_keys[] = {
 	{ "diag_gorilla", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: after diag_gorilla's rowing, a scripted gesture routine for this many seconds.
 	{ "diag_gestures", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	// Diagnostic: every this many seconds of arm locomotion, swap to the next Kong (freed or not).
+	{ "diag_tag_anywhere", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Immersive eyes only: metres converted by world_scale; 0 restores the game's near for A/B.
 	{ "eye_near_m", SFVR_SETTING_FLOAT, 0.1, 0.0, 0.25, NULL },
 	// Signed third-person head origin adjustment; the native game camera remains the source.

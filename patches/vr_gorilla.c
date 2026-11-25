@@ -335,6 +335,7 @@ static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
 // lean states (its input handler turns stick X into 0xA / 0xB). Climbing is found by behaviour
 // instead (see vr_update_climb).
 #define VR_STATE_NORMAL 0x0C
+#define VR_STATE_AIR 0x1E      // off the ground (seen falling, and while the hands hold the body up)
 
 static s32 vr_in_tag_barrel(Actor *player) {
     u8 st = player->control_state;
@@ -490,6 +491,151 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
         vr_tag_buzz = 1;  // a short buzz on both hands: the gesture registered
         recomp_printf("[vr-gesture] events %x hold %x\n", vr_gst_out.events, vr_gst_out.hold);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tag Anywhere (experimental, `tag_anywhere`): flick the left stick to swap to the previous / next
+// freed Kong without a Tag Barrel. The swap follows the DK64 Randomizer's (MIT, base-hack
+// src/fixes/tag_anywhere.c): set the hand models, point the HUD at the new Kong, swap the
+// character, resume normal movement. Only allowed in plain standing play, so nothing the swap
+// doesn't handle is going on.
+
+extern u8 isFlagSet(s16 flagIndex, u8 flagType);
+void func_global_asm_806C8E58(s16 actorType);           // swap the player's character (tagKong)
+void func_global_asm_806CFF9C(Actor *arg0);             // resume normal movement
+void func_global_asm_806F09F0(Actor *arg0, u16 arg1);   // hand models for a Kong
+
+#define VR_HUD_POINTER 0x80754280
+#define VR_HUD_ITEMS 0x1F
+#define VR_PLAYER_COLLISION_QUEUE(a) (*(void **)((u8 *)(a) + 0x13C))
+#define VR_PLAYER_POWER_FLAGS(a) (*(s32 *)((u8 *)(a) + 0x370))   // Strong Kong, sprint, Gorilla Gone, seasick
+#define VR_PLAYER_NEW_KONG(a) (*((u8 *)(a) + 0x36F))
+#define VR_PLAYER_STATE_HELD(ps) (*(void **)((u8 *)(ps) + 0x1AC))
+
+static const s16 vr_kong_freed_flag[5] = { 0, 6, 0x46, 0x42, 0x75 };  // sPauseKongTables
+static s32 vr_tag_cooldown;
+static f32 vr_tag_stick_last;
+static s32 vr_diag_tag_seen;
+
+static s32 vr_kong_freed(s32 k) {
+    return k == 0 || isFlagSet(vr_kong_freed_flag[k], 0);
+}
+
+static s32 vr_tag_map_allowed(void) {
+    if (vr_vehicle_map()) {
+        return 0;
+    }
+    switch (current_map) {
+        case MAP_HELM: case MAP_HELM_LOBBY: case MAP_TROFF_N_SCOFF: case MAP_GALLEON_KROOLS_SHIP:
+        case MAP_KROOL_FIGHT_DK_PHASE: case MAP_KROOL_FIGHT_DIDDY_PHASE: case MAP_KROOL_FIGHT_LANKY_PHASE:
+        case MAP_KROOL_FIGHT_TINY_PHASE: case MAP_KROOL_FIGHT_CHUNKY_PHASE: case MAP_KROOLS_SHOE:
+        case MAP_KROOLS_ARENA: case MAP_KROOL_BARREL_LANKY_MAZE: case MAP_KROOL_BARREL_DK_TARGET_GAME:
+        case MAP_KROOL_BARREL_TINY_MUSHROOM_GAME: case MAP_KROOL_BARREL_DIDDY_KREMLING_GAME:
+        case MAP_KROOL_BARREL_DIDDY_ROCKETBARREL_GAME: case MAP_KROOL_BARREL_LANKY_SHOOTING_GAME:
+        case MAP_KROOL_BARREL_CHUNKY_HIDDEN_KREMLING_GAME: case MAP_KROOL_BARREL_TINY_PONY_TAIL_TWIRL_GAME:
+        case MAP_KROOL_BARREL_CHUNKY_SHOOTING_GAME: case MAP_KROOL_BARREL_DK_RAMBI_GAME:
+            return 0;
+        default:
+            return 1;
+    }
+}
+
+static s32 vr_tag_allowed(Actor *p) {
+    void *ps = VR_ACTOR_CUSTOM(p);
+    f32 scale = p->animation_state != NULL ? p->animation_state->scale_y : 0.15f;
+    if (is_cutscene_active || vr_body_mode != VR_BODY_ARMS || vr_in_water) {
+        return 0;
+    }
+    if (current_character_index[0] > 4) {
+        return 0;
+    }
+    {
+        // On the ground, or held just off it by the hands (the game calls that falling): within
+        // 40 units of the floor, like the Randomizer's own rule, and not moving up or down.
+        f32 floor_y;
+        if (!(VR_ACTOR_CONTACT(p) & 1)) {
+            if (!(vr_loco.hand[0].touching || vr_loco.hand[1].touching) || p->y_velocity < -0.01f || p->y_velocity > 0.01f) {
+                return 0;
+            }
+            if (!vr_floor_at(p, p->x_position, p->z_position, p->y_position + 5.0f, &floor_y) || p->y_position - floor_y > 40.0f) {
+                return 0;
+            }
+        }
+    }
+    if (ps == NULL || VR_PLAYER_GUN_DRAWN(ps) || VR_PLAYER_STATE_HELD(ps) != NULL) {
+        return 0;
+    }
+    if (VR_PLAYER_COLLISION_QUEUE(p) != NULL || (VR_PLAYER_POWER_FLAGS(p) & 0x170)) {
+        return 0;
+    }
+    if (scale < 0.14f || scale > 0.16f) {
+        return 0;   // Mini Monkey, Hunky Chunky
+    }
+    if (p->control_state != VR_STATE_NORMAL && p->control_state != VR_STATE_AIR) {
+        return 0;
+    }
+    return vr_tag_map_allowed();
+}
+
+static void vr_tag_to(Actor *p, s32 next) {
+    u8 *hud = *(u8 **)VR_HUD_POINTER;
+    s32 i;
+    func_global_asm_806F09F0(p, (u16)(next + 2));
+    if (hud != NULL) {
+        for (i = 0; i < VR_HUD_ITEMS; i++) {
+            hud[i * 0x30 + 0x2F] = (u8)next;
+        }
+    }
+    func_global_asm_806C8E58((s16)(next + 2));
+    func_global_asm_806CFF9C(p);
+    if (p->unkB8 > 140.0f) {
+        p->unkB8 = 140.0f;
+    }
+    VR_PLAYER_NEW_KONG(p) = (u8)(next + 2);
+    vr_tag_buzz = 1;
+    recomp_printf("[vr-tag] swapped to kong %d\n", next);
+}
+
+static void vr_tag_anywhere(Actor *p) {
+    f32 x = vr_hands.stick[0][0];
+    s32 dir = 0, k, i, next;
+    if (vr_tag_cooldown > 0) {
+        vr_tag_cooldown--;
+    }
+    if (vr_hands.diag_tag != vr_diag_tag_seen) {
+        vr_diag_tag_seen = vr_hands.diag_tag;
+        if (vr_hands.diag_tag != 0) {
+            dir = 2;   // diagnostics: next Kong, freed or not
+        }
+    }
+    if (dir == 0 && vr_hands.tag_anywhere && !vr_hands.stick_move) {
+        if (x > 0.7f && vr_tag_stick_last <= 0.3f) {
+            dir = 1;
+        } else if (x < -0.7f && vr_tag_stick_last >= -0.3f) {
+            dir = -1;
+        }
+    }
+    vr_tag_stick_last = x;
+    if (dir == 0 || vr_tag_cooldown > 0) {
+        return;
+    }
+    if (!vr_tag_allowed(p)) {
+        recomp_printf("[vr-tag] not now (state %d)\n", p->control_state);
+        return;
+    }
+    k = current_character_index[0];
+    next = k;
+    for (i = 0; i < 4; i++) {
+        next = (next + (dir == -1 ? 4 : 1)) % 5;
+        if (dir == 2 || vr_kong_freed(next)) {
+            break;
+        }
+    }
+    if (next == k) {
+        return;
+    }
+    vr_tag_cooldown = 20;
+    vr_tag_to(p, next);
 }
 
 void vr_gorilla_pre_frame(void) {
@@ -665,6 +811,7 @@ void vr_gorilla_pre_frame(void) {
         }
     }
     vr_gorilla_gestures(player, &in, dt);
+    vr_tag_anywhere(player);
     if (!(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching && !vr_in_water) {
         vr_air_frames++;
     } else {

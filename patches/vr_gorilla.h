@@ -26,6 +26,8 @@ typedef struct VrHands {
     s32 gestures;
     s32 dominant;
     s32 duck_crouch;
+    s32 tag_anywhere;
+    s32 diag_tag;
 } VrHands;
 
 typedef struct VrBody {
