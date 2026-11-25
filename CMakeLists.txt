@@ -49,6 +49,20 @@ endif()
 
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
+
+# VR renderer (docs/VR_ARCHITECTURE.md): OpenXR through RT64's VR host interface and plume's
+# Vulkan create hooks. Built in by default on Linux; at runtime it stays off unless asked for
+# (--vr or DK64_VR=1), and then the flat game is unchanged.
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(DK64_VR "Build the OpenXR VR renderer" ON)
+else()
+    option(DK64_VR "Build the OpenXR VR renderer" OFF)
+endif()
+if (DK64_VR)
+    set(RT64_VR ON)
+    add_compile_definitions(RT64_VR=1 PLUME_VULKAN_CREATE_HOOKS=1)
+    set(DK64_OPENXR_PREFIX "/opt/openxr" CACHE PATH "Install prefix of the static OpenXR loader (OpenXR-SDK release-1.1.63)")
+endif()
 add_compile_definitions(HLSL_CPU)
 
 # SDL incorrectly includes a definition of _m_prefetch when compiling with clang-cl, which conflicts with the builtin definition and causes a build error. -
@@ -164,6 +178,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/game/recomp_extension_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/rom_decompression.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/vr_api.cpp
 
     ${CMAKE_SOURCE_DIR}/rsp/n_aspMain.cpp
 )
@@ -380,5 +395,49 @@ endforeach()
 target_sources(DK64Recompiled PRIVATE ${GENERATED_NRM_SOURCES})
 
 target_sources(DK64Recompiled PRIVATE ${SOURCES})
+
+if (DK64_VR)
+    set(DK64_VR_SOURCES
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_math.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_camsmooth.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_foveation.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_sched.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_settings.c
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_log.c
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_input.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/menu/dk64vr_menu.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/menu/dk64vr_menu_ui.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_host.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_foveation.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_input.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/diag/dk64vr_diag.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_settings.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_adjust.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_camera.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_perf.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_view.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_turn.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_haptics.c
+    )
+    target_sources(DK64Recompiled PRIVATE ${DK64_VR_SOURCES})
+    # VR code builds with warnings on, whatever the rest of the project uses (lesson 30).
+    set_source_files_properties(${DK64_VR_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wno-unused-parameter")
+    target_include_directories(DK64Recompiled PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/vr/include
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/include
+        ${DK64_OPENXR_PREFIX}/include
+    )
+    target_compile_definitions(DK64Recompiled PRIVATE DK64_VR=1)
+    if (EXISTS ${DK64_OPENXR_PREFIX}/lib/libopenxr_loader.a)
+        target_link_libraries(DK64Recompiled PRIVATE ${DK64_OPENXR_PREFIX}/lib/libopenxr_loader.a ${CMAKE_DL_LIBS})
+    else()
+        # distro loader (libopenxr-dev)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(OPENXR REQUIRED openxr)
+        target_include_directories(DK64Recompiled PRIVATE ${OPENXR_INCLUDE_DIRS})
+        target_link_libraries(DK64Recompiled PRIVATE ${OPENXR_LIBRARIES} ${CMAKE_DL_LIBS})
+    endif()
+endif()
 
 set_property(TARGET DK64Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
