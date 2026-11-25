@@ -153,11 +153,13 @@ static s32 vr_floor_at(Actor *player, f32 x, f32 z, f32 from_y, f32 *out) {
     return 1;
 }
 
-// Surface ids worth special handling. Filled in from the [vr-loco] surface log during play
-// testing; everything else grips fully.
+// Surface 0xC is the game's slippery floor (ice and slides: it gets the slide sound and keeps
+// a slide going above 40 speed; decomp playerStateEnterSlideBrake, playerUpdateSlopeSlidePhysics).
+// Hands slide on it; everything else grips fully.
+#define VR_SURFACE_SLIPPERY 0xC
+
 static f32 vr_surface_slip(u8 surface) {
-    (void)surface;
-    return 0.0f;
+    return surface == VR_SURFACE_SLIPPERY ? 0.85f : 0.0f;
 }
 
 // Is a sphere of radius r at p touching geometry? If so, fill the normal.
