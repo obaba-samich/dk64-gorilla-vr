@@ -51,6 +51,7 @@ typedef struct VrBody {
 #define VR_BODY_ARMS 1
 #define VR_BODY_THIRD_PERSON 2
 #define VR_BODY_BARREL 3
+#define VR_BODY_CLIMB 4
 
 #define VR_BTN_A (1 << 0)
 #define VR_BTN_B (1 << 1)

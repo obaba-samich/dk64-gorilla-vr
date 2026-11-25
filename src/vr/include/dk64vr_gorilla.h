@@ -70,8 +70,9 @@ typedef struct dk64vr_body {
 enum {
     DK64VR_BODY_OFF = 0,          // not driving (menus, cutscenes, setting off)
     DK64VR_BODY_ARMS = 1,         // arm locomotion, first person
-    DK64VR_BODY_THIRD_PERSON = 2, // vehicles, animal buddies, the game's own first person
-    DK64VR_BODY_BARREL = 3        // inside a Tag Barrel: lean to turn it
+    DK64VR_BODY_THIRD_PERSON = 2, // vehicles, animal buddies, scripted moves (blasts, cutscenes)
+    DK64VR_BODY_BARREL = 3,       // inside a Tag Barrel: lean to turn it
+    DK64VR_BODY_CLIMB = 4         // on a tree, ladder or vine: first person, hands climb
 };
 
 void dk64vr_publish_hands(const dk64vr_hands *hands);

@@ -328,8 +328,13 @@ static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
     return o;
 }
 
-// Inside a Tag Barrel the player sits in states 7, 0xA and 0xB, leaning with the stick
-// (decomp: playerEnterBarrelTransition, the state 7 input handler).
+// Player states (Actor+0x154). Only numbers the recomp's own decomp confirms are used:
+// 0x0C is plain movement (set after a Kong swap, after Mini Monkey ends, after the Ice Tomato
+// game, each followed by func_global_asm_806CFF9C "resume"); 7 / 0xA / 0xB are the Tag Barrel's
+// lean states (its input handler turns stick X into 0xA / 0xB). Climbing is found by behaviour
+// instead (see vr_update_climb).
+#define VR_STATE_NORMAL 0x0C
+
 static s32 vr_in_tag_barrel(Actor *player) {
     u8 st = player->control_state;
     return st == 7 || st == 0xA || st == 0xB;
@@ -364,7 +369,9 @@ static s32 vr_should_drive(Actor *player) {
         vr_body_mode = VR_BODY_BARREL;
         return 0;
     }
-    vr_body_mode = VR_BODY_ARMS;
+    // Hanging on a vine, rope, tree, ladder or ledge: off the ground, not falling, nothing held
+    // by the hands, for a few frames. First person stays; the hands climb instead of driving.
+    vr_body_mode = (vr_hang_frames >= 6) ? VR_BODY_CLIMB : VR_BODY_ARMS;
     return 1;
 }
 
@@ -473,6 +480,11 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     g.gun_out = vr_gun_drawn(player);
     g.dt = dt;
     gst_step_frame(&vr_gst, &vr_gst_params, &g, &vr_gst_out);
+    if (vr_body_mode != VR_BODY_CLIMB) {
+        // hand-over-hand only means "climb" on something climbable; elsewhere it would walk
+        vr_gst_out.stick_valid = 0;
+        vr_gst_out.events &= ~GST_EV_CLIMB;
+    }
     if (vr_gst_out.events & ~(GST_EV_CROUCH | GST_EV_CLIMB | GST_EV_TWIRL)) {
         recomp_printf("[vr-gesture] events %x hold %x\n", vr_gst_out.events, vr_gst_out.hold);
     }
@@ -656,6 +668,11 @@ void vr_gorilla_pre_frame(void) {
     } else {
         vr_air_frames = 0;
     }
+    if (vr_air_frames > 0 && player->y_velocity > -0.01f && player->y_velocity < 0.01f && !vr_launch_pending) {
+        vr_hang_frames++;
+    } else {
+        vr_hang_frames = 0;
+    }
     if ((vr_frame % 60) == 0) {
         recomp_printf("[vr-loco] at %.1f %.1f %.1f state %d vy %.2f holding %d%d\n", player->x_position,
             player->y_position, player->z_position, player->control_state, player->y_velocity,
@@ -685,7 +702,7 @@ void vr_gorilla_post_frame(void) {
     if (vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
         player = character_change_array[0].playerPointer;
         // face where the head looks, so guns and moves go that way
-        if (!vr_launch_pending && player->y_velocity <= 0.0f) {
+        if (vr_body_mode == VR_BODY_ARMS && !vr_launch_pending && player->y_velocity <= 0.0f) {
             f32 face = vr_hands.head_yaw;
             if (vr_gst_out.aim_valid) {
                 face = vr_gst_out.aim_yaw;   // punches, oranges, the gun face the move
@@ -721,7 +738,7 @@ void vr_gorilla_post_frame(void) {
         vr_body.press = assist ? vr_gst_out.hold : 0;
         vr_body.stick_valid = assist ? vr_gst_out.stick_valid : 0;
     }
-    vr_body.stick_free = vr_active && vr_air_frames > 24;
+    vr_body.stick_free = vr_active && (vr_air_frames > 24 || vr_body_mode == VR_BODY_CLIMB);
     vr_body.mode = vr_body_mode;
     vr_body.stick[0] = vr_gst_out.stick[0];
     vr_body.stick[1] = vr_gst_out.stick[1];
