@@ -337,7 +337,10 @@ static s32 vr_in_tag_barrel(Actor *player) {
 
 static s32 vr_body_mode;
 static s32 vr_body_mode_logged = -1;
+static s32 vr_hang_frames;         // frames off the ground with no vertical speed and no hand held
 static s32 vr_air_frames;          // frames off the ground with no hand on anything
+static f32 vr_last_head[3];        // last frame's tracked head, to spot recentres
+static s32 vr_surface_swim;        // swimming at the surface: paddle flat
 
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
@@ -526,6 +529,21 @@ void vr_gorilla_pre_frame(void) {
     if (turn != 0) {
         vr_yaw = vr_wrap(vr_yaw - (f32)turn * (VR_PI / 180.0f));
         vr_build_input(&in, dt);
+    }
+    {
+        // A snap turn swings the hands round the head, and a recentre moves them all at once;
+        // either would drag a held hand or read as a throw. Start the hands fresh instead.
+        f32 dx = vr_hands.head[0] - vr_last_head[0], dy = vr_hands.head[1] - vr_last_head[1];
+        f32 dz = vr_hands.head[2] - vr_last_head[2];
+        if (vr_initialised && player == vr_player_seen && (turn != 0 || dx * dx + dy * dy + dz * dz > 0.35f * 0.35f)) {
+            gtl_reset(&vr_loco, vr_feet_to_body(player), &in);
+            if (turn == 0) {
+                recomp_printf("[vr-loco] head jumped %.2f m (recentre), hands reset\n", vr_sqrt(dx * dx + dy * dy + dz * dz));
+            }
+        }
+        vr_last_head[0] = vr_hands.head[0];
+        vr_last_head[1] = vr_hands.head[1];
+        vr_last_head[2] = vr_hands.head[2];
     }
 
     if (!vr_initialised || player != vr_player_seen) {
