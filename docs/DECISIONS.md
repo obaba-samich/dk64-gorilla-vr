@@ -166,3 +166,18 @@ Troff 'n' Scoff or vehicle maps, and only to freed Kongs (the pause menu's flags
 The VR menu's controller map showed the third-person Xbox layout. With arm locomotion and
 gestures on it now lists the Quest buttons by name and every gesture. The first time arm
 locomotion takes over, the VR menu opens on that page once (`arms_intro_shown`).
+
+### D28. A Testing tab instead of a shipped save file
+Testing every part of the game needs every Kong, every move and a way to any map. A 101% save
+file would be data out of the game's save format and someone's playthrough, and it would need a
+download, so there's none in the repo. Upstream's debug warp menu (R + D-pad up) needs a D-pad,
+which Quest controllers lack. The VR menu gets a Testing tab instead:
+- **Place** + **Warp there**: 69 places (hub, levels, lobbies, rooms with water or vines, animal
+  buddy arenas, vehicles and races, bosses, every K. Rool phase, bonus barrels, shops, DK Arcade
+  and Jetpac), each the game's own map transition to the map's default exit.
+- **Unlock everything** (asks for a second press): the freed-Kong and training flags, all
+  Cranky / Funky / Candy upgrades for every Kong, full ammo, oranges, crystals, film, three
+  melons. Keys, Golden Bananas and blueprints stay as they are, so the file's progress isn't
+  rewritten. It saves with the file the next time the game saves.
+- Requests are counters the game acts on once each, at upstream's warp-menu point in the frame,
+  and wait while there's no player (loading, title, the arcade games).
