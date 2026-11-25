@@ -1,4 +1,5 @@
 #include "common_structs.h"
+#include "vr_gorilla.h"
 #include "ui.h"
 #include "patches_ui.h"
 #include "vr_state.h"
@@ -3023,6 +3024,7 @@ RECOMP_PATCH void func_global_asm_805FD088(Struct805FD088 *arg0, Gfx **arg1, Gfx
         gSPClearGeometryMode(dl++, G_ZBUFFER | G_SHADE | G_CULL_BOTH | G_FOG | G_LIGHTING | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR | G_LOD | G_SHADING_SMOOTH | G_CLIPPING | 0x0040F9FA)
         gSPSetGeometryMode(dl++, G_SHADE | G_CULL_BACK | G_SHADING_SMOOTH);
         dl = func_global_asm_8062BF24(dl, arg0);
+        dl = vr_gorilla_draw_hands(dl); // @recomp: VR hands, depth tested against the world
         dl = func_global_asm_80701CA0(dl);
         if (cc_number_of_players == 1) {
             dl = func_global_asm_807007B8(dl);

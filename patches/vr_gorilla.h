@@ -52,6 +52,8 @@ DECLARE_FUNC(void, recomp_vr_publish_body, const struct VrBody*);
 void vr_gorilla_pre_frame(void);
 // Once per game frame, after the frame is built (vr_frame_hook).
 void vr_gorilla_post_frame(void);
+// Draws the hands; called right after the world in the frame's display list.
+Gfx *vr_gorilla_draw_hands(Gfx *dl);
 #endif
 
 #endif

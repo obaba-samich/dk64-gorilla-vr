@@ -613,3 +613,109 @@ RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Hands: a small box per hand in the Kong's colour, drawn with the world's camera right after the
+// world, so it is depth tested against it and goes through the eye reprojection like everything
+// else. Brighter while it holds on to something.
+
+extern u8 D_global_asm_807444FC;
+extern u8 skip_interpolation;
+extern u8 skip_persp_interp;
+
+#define VR_HAND_UNIT 100.0f
+
+static Vtx vr_hand_vtx[2][2][8];
+static Mtx vr_hand_mtx[2][2];
+
+static const u32 vr_kong_colours[5] = {
+    0xF0C820FF, // DK yellow
+    0xE03028FF, // Diddy red
+    0x3060E0FF, // Lanky blue
+    0x9040D0FF, // Tiny purple
+    0x30B040FF, // Chunky green
+};
+
+static void vr_hand_box(Vtx *v, u32 rgba, s32 bright) {
+    static const s8 corners[8][3] = {
+        { -1, -1, -1 }, { 1, -1, -1 }, { 1, 1, -1 }, { -1, 1, -1 },
+        { -1, -1, 1 }, { 1, -1, 1 }, { 1, 1, 1 }, { -1, 1, 1 },
+    };
+    s32 i;
+    for (i = 0; i < 8; i++) {
+        // fake lighting: top corners lighter, bottom darker
+        s32 shade = corners[i][1] > 0 ? 255 : 150;
+        s32 r = ((rgba >> 24) & 0xFF) * shade / 255;
+        s32 g = ((rgba >> 16) & 0xFF) * shade / 255;
+        s32 b = ((rgba >> 8) & 0xFF) * shade / 255;
+        if (bright) {
+            r = r + (255 - r) / 2;
+            g = g + (255 - g) / 2;
+            b = b + (255 - b) / 2;
+        }
+        v[i].v.ob[0] = (s16)(corners[i][0] * VR_HAND_UNIT);
+        v[i].v.ob[1] = (s16)(corners[i][1] * VR_HAND_UNIT * 0.8f);
+        v[i].v.ob[2] = (s16)(corners[i][2] * VR_HAND_UNIT);
+        v[i].v.flag = 0;
+        v[i].v.tc[0] = 0;
+        v[i].v.tc[1] = 0;
+        v[i].v.cn[0] = (u8)r;
+        v[i].v.cn[1] = (u8)g;
+        v[i].v.cn[2] = (u8)b;
+        v[i].v.cn[3] = 0xFF;
+    }
+}
+
+Gfx *vr_gorilla_draw_hands(Gfx *dl) {
+    CharacterChange *cc;
+    s32 buf, h, k;
+    f32 size;
+
+    if (!vr_active || character_change_array == NULL) {
+        return dl;
+    }
+    cc = &character_change_array[0];
+    buf = D_global_asm_807444FC;
+    k = current_character_index[0];
+    if (k < 0 || k > 4) {
+        k = 0;
+    }
+    size = vr_params.hand_radius * 1.1f;
+
+    gDPPipeSync(dl++);
+    gDPSetCycleType(dl++, G_CYC_1CYCLE);
+    gDPSetRenderMode(dl++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+    gDPSetCombineMode(dl++, G_CC_SHADE, G_CC_SHADE);
+    gSPLoadGeometryMode(dl++, 0);
+    gSPSetGeometryMode(dl++, G_SHADE | G_ZBUFFER | G_CULL_BACK);
+    if (skip_interpolation || skip_persp_interp) {
+        gEXMatrixGroupSkipAllAspect(dl++, MTXTAG_CAMERAPROJECTION, G_EX_NOPUSH, G_MTX_PROJECTION, G_EX_EDIT_NONE, G_EX_ASPECT_AUTO);
+    } else {
+        gEXMatrixGroupSimpleNormal(dl++, MTXTAG_CAMERAPROJECTION, G_EX_NOPUSH, G_MTX_PROJECTION, G_EX_EDIT_NONE);
+    }
+    gSPMatrix(dl++, osVirtualToPhysical(&cc->unk88[buf]), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
+    gSPMatrix(dl++, osVirtualToPhysical(&cc->unk8[buf]), G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
+
+    for (h = 0; h < 2; h++) {
+        f32 m[4][4];
+        f32 s = size / VR_HAND_UNIT;
+        Vtx *v = vr_hand_vtx[buf][h];
+        vr_hand_box(v, vr_kong_colours[k], vr_loco.hand[h].touching);
+        guScaleF(m, s, s, s);
+        m[3][0] = vr_loco.hand[h].pos.x;
+        m[3][1] = vr_loco.hand[h].pos.y;
+        m[3][2] = vr_loco.hand[h].pos.z;
+        guMtxF2L(m, &vr_hand_mtx[buf][h]);
+        gSPMatrix(dl++, osVirtualToPhysical(&vr_hand_mtx[buf][h]), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+        gSPVertex(dl++, osVirtualToPhysical(v), 8, 0);
+        // six faces, outward winding
+        gSP2Triangles(dl++, 0, 2, 1, 0, 0, 3, 2, 0);   // -z
+        gSP2Triangles(dl++, 4, 5, 6, 0, 4, 6, 7, 0);   // +z
+        gSP2Triangles(dl++, 0, 1, 5, 0, 0, 5, 4, 0);   // -y
+        gSP2Triangles(dl++, 3, 7, 6, 0, 3, 6, 2, 0);   // +y
+        gSP2Triangles(dl++, 0, 4, 7, 0, 0, 7, 3, 0);   // -x
+        gSP2Triangles(dl++, 1, 2, 6, 0, 1, 6, 5, 0);   // +x
+    }
+    gDPPipeSync(dl++);
+    return dl;
+}
