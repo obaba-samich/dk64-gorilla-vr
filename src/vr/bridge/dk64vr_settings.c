@@ -28,6 +28,22 @@ static const sfvr_setting_key port_keys[] = {
 	// so 15 makes him about 1.7 m tall; docs/VR_ARCHITECTURE.md section 5. Keep the old
 	// 100-unit ceiling while extending the small end to 25% of baseline.
 	{ "world_scale", SFVR_SETTING_FLOAT, 15.0, 3.75, 100.0, NULL },
+	// Arm locomotion (Gorilla Tag style, first person). On by default; off gives the third-person
+	// VR camera with stick movement.
+	{ "gorilla_mode", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Game units per metre in first person. Bigger than world_scale on purpose: DK's eyes end up
+	// about 0.8 m off the floor, so you feel small and reach the ground without kneeling.
+	{ "gorilla_world_scale", SFVR_SETTING_FLOAT, 26.0, 8.0, 60.0, NULL },
+	// Real arm reach multiplier. Above 1 = long gorilla arms.
+	{ "arm_scale", SFVR_SETTING_FLOAT, 1.15, 0.5, 2.0, NULL },
+	// Release speed multiplier and cap (metres a second of world speed).
+	{ "jump_multiplier", SFVR_SETTING_FLOAT, 1.1, 0.5, 3.0, NULL },
+	{ "max_jump_speed", SFVR_SETTING_FLOAT, 6.5, 1.0, 20.0, NULL },
+	// Comfort: left stick moves as well as the arms.
+	{ "stick_move", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// Diagnostic: synthetic hands that row along the floor and push off, for this many seconds of
+	// stereo play. 0 = off.
+	{ "diag_gorilla", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Immersive eyes only: metres converted by world_scale; 0 restores the game's near for A/B.
 	{ "eye_near_m", SFVR_SETTING_FLOAT, 0.1, 0.0, 0.25, NULL },
 	// Signed third-person head origin adjustment; the native game camera remains the source.
