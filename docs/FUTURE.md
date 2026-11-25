@@ -24,27 +24,24 @@ it up:
 
 ## Next up (not Kong Tag)
 
+- **Tag Anywhere.** Swap Kongs without a barrel (a radial on a held button). The game's swap is
+  `playerSetKongByActorType` (0x806C8E58), the same call the DK64 Randomizer uses. It must run
+  inside the player's update (it uses the current-actor globals and allocates model buffers), and
+  only when the Kong is freed, the player stands on the ground in a normal state, nothing is held
+  and no cutscene runs. Plan: a patch on the player update that checks a request flag set by the
+  gesture layer. See D22.
 - **Real wall query.** Hands find walls through floor-height steps (D11). Proper walls need the
   wall triangle format (pointer table 2, `TABLE_02_MAP_WALLS`) or a matched
   `func_global_asm_8066A08C`. With it, `vr_sweep` gets one more test and room walls become climbable.
 - **Hands at display rate.** Hand boxes are placed at the game's 30 Hz and interpolated by RT64.
   Drawing them from the host at display rate (latest controller pose) would remove the lag.
-- **Gestures.** Plan: a small gesture layer in patches/vr_gorilla.c that turns hand motion into the
-  button presses the moves already use, so the game's own move logic stays in charge:
-  - Simian Slam: both hands moving down fast while airborne → Z.
-  - Gun: grip near the hip → draw (Z + the Kong's gun combo), trigger → B, shots from the hand's aim
-    pose (needs a projectile-origin override in the shot spawner).
-  - Oranges: grip at the hip, throw → the orange combo, velocity from the hand.
-  - Instruments: hand-specific motion (drum hits, strum) → the instrument combo.
-  - Primate Punch / swat: fast hand into an enemy's collision → B.
-  - Vines and ladders: grab with grip near the vine / ladder actor → hand over hand drives the
-    existing vine/ladder states.
-  Each one needs its N64 combo confirmed in the decomp's action table (0x80752C70) and a playtest.
-- **Slippery surfaces.** Map the surface ids from the `[vr-loco] hand N on surface S` log to slip
-  values in `vr_surface_slip` (Crystal Caves ice, slides).
-- **Wrist HUD.** The HUD layer exists (`hud_mode`); anchor it to the left aim pose.
+- **Gun aim from the hand.** Shots go where the head faces. Aiming from the gun hand needs a
+  projectile-origin override in the shot spawner.
+- **Per-Kong instrument motions.** One pose plays every instrument now. Drum hits for DK's bongos,
+  a strum for Diddy's guitar and so on would be nicer.
+- **Extras.** Stats overlay (speed, airtime from `dk64vr_body.speed`), a run timer, hand trails.
 - **Meta Touch Plus profile.** Runtimes map Quest 3S controllers to the Touch profile already;
   add `/interaction_profiles/meta/touch_controller_plus` when `XR_META_touch_controller_plus` is
   offered.
 - **Split into a .nrm.** All game-side VR code is in patches/vr_*.c; as a mod it could use
-  `RECOMP_HOOK` instead of copying decomp functions.
+  `RECOMP_HOOK` instead of copying decomp functions. The renderer and host changes stay a fork.
