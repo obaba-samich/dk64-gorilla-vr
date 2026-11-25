@@ -209,6 +209,37 @@ static void test_orange_throw(void) {
     CHECK((r.seen_hold & (GST_N64_Z | GST_N64_CR)) == (GST_N64_Z | GST_N64_CR), "held %x", r.seen_hold);
 }
 
+static void test_orange_released_after_the_swing(void) {
+    rig r;
+    rig_init(&r);
+    set_hand(&r, 0, -0.22f, -0.6f, 0.0f);
+    rig_run(&r, 1);
+    r.in.grip[0] = 1.0f;
+    rig_run(&r, 3);
+    set_hand(&r, 0, -0.2f, -0.3f, -0.3f);
+    set_vel(&r, 0, 0.0f, 2.0f, -3.5f);
+    rig_run(&r, 2);
+    CHECK(!(r.events & GST_EV_CLIMB), "the throwing hand climbed");
+    set_hand(&r, 0, -0.2f, -0.2f, -0.6f);
+    set_vel(&r, 0, 0, 0, 0);
+    rig_run(&r, 1);
+    r.in.grip[0] = 0.0f;
+    rig_run(&r, 1);
+    CHECK(r.events & GST_EV_ORANGE, "late release lost the orange");
+}
+
+static void test_punch_into_a_wall(void) {
+    rig r;
+    rig_init(&r);
+    set_hand(&r, 1, 0.2f, -0.3f, -0.3f);
+    r.in.touching[1] = 1;
+    set_vel(&r, 1, 0.0f, 0.0f, -3.5f);
+    rig_run(&r, 1);
+    set_vel(&r, 1, 0, 0, 0);
+    rig_run(&r, 8);
+    CHECK(r.events & GST_EV_PUNCH, "no punch against a wall");
+}
+
 static void test_orange_dropped_slowly_is_nothing(void) {
     rig r;
     rig_init(&r);
@@ -305,6 +336,8 @@ int main(void) {
     test_fire_with_trigger();
     test_orange_throw();
     test_orange_dropped_slowly_is_nothing();
+    test_orange_released_after_the_swing();
+    test_punch_into_a_wall();
     test_instrument();
     test_twirl_in_air();
     test_duck_crouch();

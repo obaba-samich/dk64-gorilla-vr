@@ -159,6 +159,11 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         trig_down[h] = in->trigger[h] > 0.6f && s->prev_trigger[h] <= 0.6f;
     }
 
+    for (h = 0; h < 2; h++) {
+        for (k = 0; k < 3; k++) s->recent_vel[h][s->recent_pos][k] = in->hand_vel[h][k];
+    }
+    s->recent_pos = (s->recent_pos + 1) & 3;
+
     /* standing height: follows the head up at once, comes down slowly (sitting, a new stance) */
     if (!s->standing_seen || in->head[1] > s->standing_y) {
         s->standing_y = in->head[1];
@@ -197,12 +202,23 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         s->orange_held = 1;
     }
     if (s->orange_held && grip_up[other]) {
-        float sp2 = lv[other][0] * lv[other][0] + lv[other][1] * lv[other][1] + lv[other][2] * lv[other][2];
+        /* people let go at the end of the swing, so use the fastest of the last few frames */
+        float best = 0.0f, bv[3] = { 0.0f, 0.0f, 0.0f }, lb[3];
+        int f;
+        for (f = 0; f < 4; f++) {
+            const float *v = s->recent_vel[other][f];
+            float sp2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+            if (sp2 > best) {
+                best = sp2;
+                bv[0] = v[0]; bv[1] = v[1]; bv[2] = v[2];
+            }
+        }
+        gst_local(in, bv, 0, lb);
         s->orange_held = 0;
-        if (sp2 > p->throw_speed * p->throw_speed && lv[other][2] > 0.0f && !gst_busy(s) && !in->airborne
+        if (best > p->throw_speed * p->throw_speed && lb[2] > 0.0f && !gst_busy(s) && !in->airborne
             && gst_ready(s, GST_EV_ORANGE)) {
             gst_combo(s, GST_N64_CR);
-            gst_aim(s, gst_yaw_of(in->hand_vel[other][0], in->hand_vel[other][2]), 6);
+            gst_aim(s, gst_yaw_of(bv[0], bv[2]), 6);
             gst_cool(s, GST_EV_ORANGE, 0.4f);
             out->events |= GST_EV_ORANGE;
         }
@@ -227,7 +243,9 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
 
     /* Punches: a fast forward jab from chest height, not holding on. Two together = special. */
     for (h = 0; h < 2; h++) {
-        int jab = !in->touching[h] && in->grip[h] < 0.4f && lp[h][1] > -0.55f
+        /* touching is fine: a punch into a wall or an enemy is still a punch. Chest height keeps
+           rowing (hands low, on the ground) out. */
+        int jab = in->grip[h] < 0.4f && lp[h][1] > -0.55f
             && lv[h][2] > p->punch_speed && lv[h][2] > 2.0f * gst_abs(lv[h][1]);
         if (jab && s->punch_wait[h] == 0 && gst_ready(s, GST_EV_PUNCH)) {
             s->punch_wait[h] = 1;
@@ -274,7 +292,7 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         float pull = 0.0f;
         int n = 0;
         for (h = 0; h < 2; h++) {
-            if (in->grip[h] > 0.6f && lp[h][1] > -0.25f && !in->touching[h]) {
+            if (in->grip[h] > 0.6f && lp[h][1] > -0.25f && !in->touching[h] && !(s->orange_held && h == other)) {
                 pull += -lv[h][1];
                 n++;
             }

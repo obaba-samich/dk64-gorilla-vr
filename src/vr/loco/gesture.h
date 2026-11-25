@@ -106,6 +106,8 @@ typedef struct gst_state {
     int standing_seen;
     float aim_yaw;
     int aim_frames;
+    float recent_vel[2][4][3];  /* last few frames of hand velocity, for throws */
+    int recent_pos;
 } gst_state;
 
 void gst_default_params(gst_params *p);
