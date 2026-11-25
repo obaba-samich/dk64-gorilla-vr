@@ -228,6 +228,7 @@ static VrHands vr_hands;
 static VrBody vr_body;
 static s32 vr_active;              // arm locomotion drove the player this frame
 static s32 vr_hide_body = 1;       // first person: don't draw the player's own model
+static s32 vr_in_water;
 static f32 vr_yaw;                 // body heading (radians, game convention)
 static f32 vr_height;              // head above the feet, world units (per Kong)
 static s32 vr_initialised;
@@ -404,12 +405,31 @@ void vr_gorilla_pre_frame(void) {
         }
     }
 
+    // Under water? The floor query also reports the water surface over that spot.
+    {
+        f32 floor_y, water_y = 0.0f;
+        f32 head_y = vr_loco.body.y + vr_params.head_height;
+        vr_floor_at(player, vr_loco.body.x, vr_loco.body.z, head_y + 2000.0f, &floor_y);
+        if (func_global_asm_8066715C(&water_y) && head_y < water_y) {
+            in.mode = GTL_MODE_WATER;
+            in.external_flight = 0;
+            vr_params.gravity = 0.0f;
+            vr_params.buoyancy = 0.0f;
+            if (!vr_in_water) {
+                recomp_printf("[vr-loco] in water (surface %.1f)\n", water_y);
+            }
+            vr_in_water = 1;
+        } else {
+            vr_in_water = 0;
+        }
+    }
+
     gtl_step(&vr_loco, &vr_params, &vr_world, &in, &ev);
 
     vr_disp.x = vr_loco.body.x - before.x;
     vr_disp.y = vr_loco.body.y - before.y;
     vr_disp.z = vr_loco.body.z - before.z;
-    vr_drive = vr_loco.hand[0].touching || vr_loco.hand[1].touching
+    vr_drive = vr_loco.hand[0].touching || vr_loco.hand[1].touching || vr_in_water
         || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f;
     vr_active = 1;
 
@@ -527,8 +547,8 @@ RECOMP_PATCH void func_global_asm_806651FC(Actor *arg0) {
         arg0->x_position += vr_disp.x;
         arg0->y_position += vr_disp.y;
         arg0->z_position += vr_disp.z;
-        if (vr_loco.hand[0].touching || vr_loco.hand[1].touching) {
-            // held up by the hands: don't build falling speed
+        if (vr_loco.hand[0].touching || vr_loco.hand[1].touching || vr_in_water) {
+            // held up by the hands, or paddling: don't build up the game's own speed
             arg0->y_velocity = 0.0f;
             arg0->unkB8 = 0.0f;
         }
