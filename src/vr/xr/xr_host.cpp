@@ -2336,6 +2336,53 @@ private:
         h.valid = 1;
     }
 
+    // Diagnostic gestures (diag_gestures, after diag_gorilla's rowing): a fixed 10 s routine of
+    // punch, gun draw, two shots, holster, orange throw, double punch, so each one shows up in
+    // the [vr-gesture] log. Writes positions, grips and triggers; velocities follow from them.
+    void diagGestureHands(dk64vr_hands &h, double t) {
+        const float ph = float(std::fmod(t, 10.0));
+        auto put = [&](int i, float x, float y, float z) {
+            h.hand[i][0] = h.head[0] + x;
+            h.hand[i][1] = h.head[1] + y;
+            h.hand[i][2] = h.head[2] + z;
+        };
+        auto ramp = [](float a, float b, float u) { return a + (b - a) * std::clamp(u, 0.0f, 1.0f); };
+        put(0, -0.35f, -0.9f, 0.05f);
+        put(1, 0.35f, -0.9f, 0.05f);
+        h.grip[0] = h.grip[1] = 0.0f;
+        h.trigger[0] = h.trigger[1] = 0.0f;
+        if (ph < 1.0f) {                   // right jab: chest, then straight out fast
+            put(1, 0.2f, -0.3f, ramp(-0.1f, -0.6f, (ph - 0.5f) / 0.1f));
+        }
+        else if (ph < 3.0f) {              // right hand to the hip and close it
+            put(1, 0.22f, -0.6f, 0.0f);
+            h.grip[1] = (ph > 1.5f && ph < 2.0f) ? 1.0f : 0.0f;
+        }
+        else if (ph < 4.5f) {              // aim forward, two trigger pulls
+            put(1, 0.2f, -0.3f, -0.5f);
+            h.trigger[1] = ((ph > 3.3f && ph < 3.5f) || (ph > 3.9f && ph < 4.1f)) ? 1.0f : 0.0f;
+        }
+        else if (ph < 5.5f) {              // holster
+            put(1, 0.22f, -0.6f, 0.0f);
+            h.grip[1] = (ph > 4.8f && ph < 5.2f) ? 1.0f : 0.0f;
+        }
+        else if (ph < 7.5f) {              // orange: left at the hip, close, throw, open
+            if (ph < 6.6f) {
+                put(0, -0.22f, -0.6f, 0.0f);
+            }
+            else {
+                put(0, -0.2f, ramp(-0.6f, -0.2f, (ph - 6.6f) / 0.15f), ramp(0.0f, -0.6f, (ph - 6.6f) / 0.15f));
+            }
+            h.grip[0] = (ph > 6.0f && ph < 6.75f) ? 1.0f : 0.0f;
+        }
+        else if (ph < 9.0f) {              // both jab together
+            const float z = ramp(-0.1f, -0.6f, (ph - 8.0f) / 0.1f);
+            put(0, -0.2f, -0.3f, z);
+            put(1, 0.2f, -0.3f, z);
+        }
+        h.valid = 1;
+    }
+
     void publishHands(const InputSample &s, float dt) {
         dk64vr_hands h = {};
         h.seq = uint32_t(frameCount);
@@ -2369,6 +2416,15 @@ private:
                 diagGorillaHands(h);
             }
         }
+        bool diagGestures = false;
+        if ((setting("diag_gestures") > 0.0) && stereoLatched) {
+            const double rowFor = setting("diag_gorilla");
+            if ((diagGorillaStartS != 0.0) && (displayS - diagGorillaStartS >= rowFor)
+                && (displayS - diagGorillaStartS < rowFor + setting("diag_gestures"))) {
+                diagGestureHands(h, displayS - diagGorillaStartS - rowFor);
+                diagGestures = true;
+            }
+        }
         for (int i = 0; i < 2; i++) {
             const Vec3 now { h.hand[i][0], h.hand[i][1], h.hand[i][2] };
             if (gorillaHandsSeen && dt > 0.0f) {
@@ -2379,10 +2435,12 @@ private:
             gorillaLastHand[i] = now;
         }
         gorillaHandsSeen = true;
-        h.grip[0] = s.lBumper ? 1.0f : 0.0f;
-        h.grip[1] = s.rBumper ? 1.0f : 0.0f;
-        h.trigger[0] = s.lTrigger;
-        h.trigger[1] = s.rTrigger;
+        if (!diagGestures) {
+            h.grip[0] = s.lBumper ? 1.0f : 0.0f;
+            h.grip[1] = s.rBumper ? 1.0f : 0.0f;
+            h.trigger[0] = s.lTrigger;
+            h.trigger[1] = s.rTrigger;
+        }
         h.buttons = (s.a ? DK64VR_BTN_A : 0) | (s.b ? DK64VR_BTN_B : 0) | (s.x ? DK64VR_BTN_X : 0) | (s.y ? DK64VR_BTN_Y : 0)
             | (s.lStickClick ? DK64VR_BTN_LSTICK : 0) | (s.rStickClick ? DK64VR_BTN_RSTICK : 0) | (s.menu ? DK64VR_BTN_MENU : 0);
         h.stick[0][0] = s.lStick[0];

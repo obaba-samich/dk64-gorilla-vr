@@ -41,9 +41,13 @@ static const sfvr_setting_key port_keys[] = {
 	{ "max_jump_speed", SFVR_SETTING_FLOAT, 6.5, 1.0, 20.0, NULL },
 	// Comfort: left stick moves as well as the arms.
 	{ "stick_move", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// Abilities by hand motion (src/vr/loco/gesture.h). Off = buttons only, grips back on C-up/C-down.
+	{ "gestures", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	// Diagnostic: synthetic hands that row along the floor and push off, for this many seconds of
 	// stereo play. 0 = off.
 	{ "diag_gorilla", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	// Diagnostic: after diag_gorilla's rowing, a scripted gesture routine for this many seconds.
+	{ "diag_gestures", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Immersive eyes only: metres converted by world_scale; 0 restores the game's near for A/B.
 	{ "eye_near_m", SFVR_SETTING_FLOAT, 0.1, 0.0, 0.25, NULL },
 	// Signed third-person head origin adjustment; the native game camera remains the source.
