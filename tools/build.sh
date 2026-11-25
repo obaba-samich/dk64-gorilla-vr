@@ -68,8 +68,27 @@ if [[ ! -x "$tools_dir/N64Recomp/build/N64Recomp" ]] ||
     cmake --build "$tools_dir/N64Recomp/build" --target N64RecompCLI RSPRecomp RecompModTool -j"$jobs"
 fi
 
-"$tools_dir/N64Recomp/build/N64Recomp" us.toml
-"$tools_dir/N64Recomp/build/RSPRecomp" n_aspMain.toml
+# Static OpenXR loader. Distro packages are too old (Ubuntu 24.04 ships 1.0.20, the VR host needs
+# 1.1 headers). Same release the VR host was written against.
+openxr_tag=release-1.1.63
+openxr_prefix="$tools_dir/openxr"
+if [[ ! -f "$openxr_prefix/lib/libopenxr_loader.a" ]]; then
+    mkdir -p "$tools_dir"
+    [[ -d "$tools_dir/OpenXR-SDK" ]] ||
+        git clone -q --depth 1 --branch "$openxr_tag" https://github.com/KhronosGroup/OpenXR-SDK.git "$tools_dir/OpenXR-SDK"
+    cmake -S "$tools_dir/OpenXR-SDK" -B "$tools_dir/OpenXR-SDK/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+        -DCMAKE_C_FLAGS="$gcc_flags" -DCMAKE_CXX_FLAGS="$gcc_flags" -DCMAKE_EXE_LINKER_FLAGS="$gcc_flags" \
+        -DBUILD_TESTS=OFF -DDYNAMIC_LOADER=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_INSTALL_PREFIX="$openxr_prefix" -DCMAKE_INSTALL_LIBDIR=lib
+    cmake --build "$tools_dir/OpenXR-SDK/build" --target install -j"$jobs"
+fi
+
+# the CMake build runs ./N64Recomp on the patches itself
+ln -sfn "$tools_dir/N64Recomp/build/N64Recomp" N64Recomp
+ln -sfn "$tools_dir/N64Recomp/build/RSPRecomp" RSPRecomp
+./N64Recomp us.toml
+./RSPRecomp n_aspMain.toml
 
 if [[ -x tools/vr/prepare.sh ]]; then
     tools/vr/prepare.sh
@@ -78,7 +97,8 @@ fi
 cmake -S . -B build-cmake -G Ninja -DCMAKE_BUILD_TYPE="$build_type" \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_FLAGS="$gcc_flags" -DCMAKE_CXX_FLAGS="$gcc_flags" \
-    -DCMAKE_EXE_LINKER_FLAGS="$gcc_flags" -DCMAKE_SHARED_LINKER_FLAGS="$gcc_flags"
+    -DCMAKE_EXE_LINKER_FLAGS="$gcc_flags" -DCMAKE_SHARED_LINKER_FLAGS="$gcc_flags" \
+    -DDK64_OPENXR_PREFIX="$openxr_prefix"
 cmake --build build-cmake --target DK64Recompiled -j"$jobs"
 
 echo
