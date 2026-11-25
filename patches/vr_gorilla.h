@@ -23,6 +23,9 @@ typedef struct VrHands {
     f32 max_jump_speed;
     s32 gorilla;
     s32 stick_move;
+    s32 gestures;
+    s32 dominant;
+    s32 duck_crouch;
 } VrHands;
 
 typedef struct VrBody {
@@ -36,7 +39,18 @@ typedef struct VrBody {
     f32 launch_speed;
     s32 launch_count;
     s32 haptic[2];
+    u32 press;
+    s32 stick_valid;
+    f32 stick[2];
+    s32 gun_out;
+    s32 stick_free;
+    s32 mode;
 } VrBody;
+
+#define VR_BODY_OFF 0
+#define VR_BODY_ARMS 1
+#define VR_BODY_THIRD_PERSON 2
+#define VR_BODY_BARREL 3
 
 #define VR_BTN_A (1 << 0)
 #define VR_BTN_B (1 << 1)

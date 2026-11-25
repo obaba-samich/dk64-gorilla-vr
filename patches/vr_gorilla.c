@@ -16,6 +16,7 @@
 #include "vr_state.h"
 #include "vr_gorilla.h"
 #include "../src/vr/loco/gtl.h"
+#include "../src/vr/loco/gesture.h"
 
 extern u8 is_cutscene_active;
 extern u8 cc_number_of_players;
@@ -30,6 +31,30 @@ f32 func_global_asm_80612794(s16 arg0);
 f32 func_global_asm_80612790(s16 arg0);
 
 s32 vr_current_scene(void);
+extern Maps current_map;
+
+// Maps where the player rides something the arms can't drive: the third-person VR camera and
+// the stick take over (docs/DECISIONS.md).
+static s32 vr_vehicle_map(void) {
+    switch (current_map) {
+        case MAP_JAPES_MINECART:
+        case MAP_FUNGI_MINECART:
+        case MAP_CASTLE_MINECART:
+        case MAP_MINECART_MAYHEM_EASY:
+        case MAP_MINECART_MAYHEM_NORMAL:
+        case MAP_MINECART_MAYHEM_HARD:
+        case MAP_AZTEC_BEETLE_RACE:
+        case MAP_CAVES_BEETLE_RACE:
+        case MAP_FACTORY_CAR_RACE:
+        case MAP_CASTLE_CAR_RACE:
+        case MAP_GALLEON_SEAL_RACE:
+        case MAP_GALLEON_PUFFTOSS:
+        case MAP_KROOL_FIGHT_DIDDY_PHASE:
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // small maths, no libc here
@@ -244,6 +269,23 @@ static s32 vr_launch_pending;
 static gtl_vec3 vr_launch_v;
 static s32 vr_launch_count;
 
+// Gestures (src/vr/loco/gesture.c, compiled in through vr_loco_core.c).
+static gst_state vr_gst;
+static gst_params vr_gst_params;
+static gst_output vr_gst_out;
+
+// Raw fields the recomp's structs only name as unknowns (offsets from the DK64 decompilation's
+// include/actor.h): actor contact flags (bit 0 on the ground, bit 1 in water) and the player
+// state's gun-drawn byte.
+#define VR_ACTOR_CONTACT(a) (*(u16 *)((u8 *)(a) + 0x6A))
+#define VR_ACTOR_CUSTOM(a) (*(void **)((u8 *)(a) + 0x174))
+#define VR_PLAYER_GUN_DRAWN(ps) (*((u8 *)(ps) + 0x8C))
+
+static s32 vr_gun_drawn(Actor *player) {
+    void *ps = VR_ACTOR_CUSTOM(player);
+    return ps != NULL && VR_PLAYER_GUN_DRAWN(ps) != 0;
+}
+
 static f32 vr_sweep_sqrt(f32 v) {
     return vr_sqrt(v);
 }
@@ -284,18 +326,61 @@ static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
     return o;
 }
 
+// Inside a Tag Barrel the player sits in states 7, 0xA and 0xB, leaning with the stick
+// (decomp: playerEnterBarrelTransition, the state 7 input handler).
+static s32 vr_in_tag_barrel(Actor *player) {
+    u8 st = player->control_state;
+    return st == 7 || st == 0xA || st == 0xB;
+}
+
+static s32 vr_body_mode;
+static s32 vr_body_mode_logged = -1;
+static s32 vr_air_frames;          // frames off the ground with no hand on anything
+
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
+    vr_body_mode = VR_BODY_OFF;
     if (!vr_hands.valid || !vr_hands.gorilla || player == NULL) {
         return 0;
     }
     if (cc_number_of_players > 1) {
         return 0;
     }
-    if (scene != VR_SCENE_GAMEPLAY && scene != VR_SCENE_FIRST_PERSON) {
+    if (scene != VR_SCENE_GAMEPLAY) {
+        // the game's own first person (scope, aiming minigames) keeps the base port's head aim
         return 0;
     }
+    if (current_character_index[0] > 4 || vr_vehicle_map()) {
+        // Rambi, Enguarde, carts and races
+        vr_body_mode = VR_BODY_THIRD_PERSON;
+        return 0;
+    }
+    if (vr_in_tag_barrel(player)) {
+        vr_body_mode = VR_BODY_BARREL;
+        return 0;
+    }
+    vr_body_mode = VR_BODY_ARMS;
     return 1;
+}
+
+// Tag Barrel: lean left or right to turn it, both hands flung up to pick (A).
+static void vr_barrel_assist(void) {
+    f32 lean = vr_hands.head[0] / 0.12f;
+    vr_gst_out.hold = 0;
+    vr_gst_out.events = 0;
+    vr_gst_out.aim_valid = 0;
+    if (lean > 1.0f) {
+        lean = 1.0f;
+    }
+    if (lean < -1.0f) {
+        lean = -1.0f;
+    }
+    vr_gst_out.stick_valid = (lean > 0.35f || lean < -0.35f);
+    vr_gst_out.stick[0] = lean;
+    vr_gst_out.stick[1] = 0.0f;
+    if (vr_hands.hand_vel[0][1] > 2.5f && vr_hands.hand_vel[1][1] > 2.5f) {
+        vr_gst_out.hold = GST_N64_A;
+    }
 }
 
 static void vr_setup_params(Actor *player) {
@@ -349,6 +434,45 @@ static gtl_vec3 vr_feet_to_body(Actor *p) {
     return b;
 }
 
+static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt) {
+    gst_input g;
+    s32 h, k;
+    (void)loco_in;
+
+    vr_gst_out.hold = 0;
+    vr_gst_out.events = 0;
+    vr_gst_out.stick_valid = 0;
+    vr_gst_out.aim_valid = 0;
+    if (!vr_hands.gestures) {
+        gst_reset(&vr_gst);
+        return;
+    }
+    gst_default_params(&vr_gst_params);
+    vr_gst_params.dominant = vr_hands.dominant;
+    vr_gst_params.crouch_by_ducking = vr_hands.duck_crouch;
+    for (k = 0; k < 3; k++) {
+        g.head[k] = vr_hands.head[k];
+        for (h = 0; h < 2; h++) {
+            g.hand[h][k] = vr_hands.hand[h][k];
+            g.hand_vel[h][k] = vr_hands.hand_vel[h][k];
+        }
+    }
+    g.head_yaw = vr_hands.head_yaw;
+    for (h = 0; h < 2; h++) {
+        g.grip[h] = vr_hands.grip[h];
+        g.trigger[h] = vr_hands.trigger[h];
+        g.touching[h] = vr_loco.hand[h].touching;
+    }
+    g.airborne = !(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching;
+    g.in_water = vr_in_water || (VR_ACTOR_CONTACT(player) & 2) != 0;
+    g.gun_out = vr_gun_drawn(player);
+    g.dt = dt;
+    gst_step_frame(&vr_gst, &vr_gst_params, &g, &vr_gst_out);
+    if (vr_gst_out.events & ~(GST_EV_CROUCH | GST_EV_CLIMB | GST_EV_TWIRL)) {
+        recomp_printf("[vr-gesture] events %x hold %x\n", vr_gst_out.events, vr_gst_out.hold);
+    }
+}
+
 void vr_gorilla_pre_frame(void) {
     Actor *player;
     gtl_input in;
@@ -361,13 +485,31 @@ void vr_gorilla_pre_frame(void) {
     vr_active = 0;
     if (!recomp_vr_is_active() || character_change_array == NULL) {
         vr_initialised = 0;
+        vr_body_mode = VR_BODY_OFF;
+        vr_gst_out.hold = 0;
+        vr_gst_out.stick_valid = 0;
         return;
     }
     recomp_vr_get_hands(&vr_hands);
     player = character_change_array[0].playerPointer;
+    vr_gst_out.hold = 0;
+    vr_gst_out.stick_valid = 0;
     if (!vr_should_drive(player)) {
         vr_initialised = 0;
+        vr_air_frames = 0;
+        if (vr_body_mode == VR_BODY_BARREL && vr_hands.gestures) {
+            vr_barrel_assist();
+        }
+        if (vr_body_mode != vr_body_mode_logged) {
+            vr_body_mode_logged = vr_body_mode;
+            recomp_printf("[vr-loco] mode %d (map %d, kong %d, state %d)\n", vr_body_mode, current_map,
+                current_character_index[0], player != NULL ? player->control_state : -1);
+        }
         return;
+    }
+    if (vr_body_mode != vr_body_mode_logged) {
+        vr_body_mode_logged = vr_body_mode;
+        recomp_printf("[vr-loco] mode %d (map %d, kong %d)\n", vr_body_mode, current_map, current_character_index[0]);
     }
 
     dt = 1.0f / 30.0f;
@@ -473,6 +615,12 @@ void vr_gorilla_pre_frame(void) {
             recomp_printf("[vr-loco] jump started, speed set to %.2f up %.2f along\n", player->y_velocity, player->unkB8);
         }
     }
+    vr_gorilla_gestures(player, &in, dt);
+    if (!(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching && !vr_in_water) {
+        vr_air_frames++;
+    } else {
+        vr_air_frames = 0;
+    }
     if ((vr_frame % 60) == 0) {
         recomp_printf("[vr-loco] at %.1f %.1f %.1f state %d vy %.2f holding %d%d\n", player->x_position,
             player->y_position, player->z_position, player->control_state, player->y_velocity,
@@ -503,7 +651,11 @@ void vr_gorilla_post_frame(void) {
         player = character_change_array[0].playerPointer;
         // face where the head looks, so guns and moves go that way
         if (!vr_launch_pending && player->y_velocity <= 0.0f) {
-            player->y_rotation = vr_heading_to_game(vr_yaw + vr_hands.head_yaw);
+            f32 face = vr_hands.head_yaw;
+            if (vr_gst_out.aim_valid) {
+                face = vr_gst_out.aim_yaw;   // punches, oranges, the gun face the move
+            }
+            player->y_rotation = vr_heading_to_game(vr_yaw + face);
         }
         // camera: the tracked head offset is added by the host at display rate, so publish the
         // standing eye point over the feet
@@ -529,6 +681,17 @@ void vr_gorilla_post_frame(void) {
         (void)c;
     }
     vr_body.launch_count = vr_launch_count;
+    {
+        s32 assist = vr_active || vr_body_mode == VR_BODY_BARREL;
+        vr_body.press = assist ? vr_gst_out.hold : 0;
+        vr_body.stick_valid = assist ? vr_gst_out.stick_valid : 0;
+    }
+    vr_body.stick_free = vr_active && vr_air_frames > 24;
+    vr_body.mode = vr_body_mode;
+    vr_body.stick[0] = vr_gst_out.stick[0];
+    vr_body.stick[1] = vr_gst_out.stick[1];
+    vr_body.gun_out = (vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL)
+        ? vr_gun_drawn(character_change_array[0].playerPointer) : 0;
     recomp_vr_publish_body(&vr_body);
 }
 

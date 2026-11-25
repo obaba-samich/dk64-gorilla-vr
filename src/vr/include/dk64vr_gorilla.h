@@ -42,6 +42,9 @@ typedef struct dk64vr_hands {
     float max_jump_speed;    // metres per second
     int32_t gorilla;         // arm locomotion on
     int32_t stick_move;      // comfort smooth locomotion on the left stick
+    int32_t gestures;        // ability gestures on
+    int32_t dominant;        // gun hand, 0 left 1 right
+    int32_t duck_crouch;     // ducking holds Z
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.
@@ -56,7 +59,20 @@ typedef struct dk64vr_body {
     float launch_speed;      // last launch, units per second
     int32_t launch_count;    // bumps on every release that should become a jump
     int32_t haptic[2];       // 0 none, else strength in percent for this frame
+    uint32_t press;          // N64 buttons the gestures hold until the next game frame
+    int32_t stick_valid;     // the gestures drive the N64 stick (climbing)
+    float stick[2];          // -1..1, y up
+    int32_t gun_out;
+    int32_t stick_free;      // long in the air (Rocketbarrel, glides): the left stick steers
+    int32_t mode;            // DK64VR_BODY_* below, for the log and the HUD
 } dk64vr_body;
+
+enum {
+    DK64VR_BODY_OFF = 0,          // not driving (menus, cutscenes, setting off)
+    DK64VR_BODY_ARMS = 1,         // arm locomotion, first person
+    DK64VR_BODY_THIRD_PERSON = 2, // vehicles, animal buddies, the game's own first person
+    DK64VR_BODY_BARREL = 3        // inside a Tag Barrel: lean to turn it
+};
 
 void dk64vr_publish_hands(const dk64vr_hands *hands);
 void dk64vr_get_hands(dk64vr_hands *out);

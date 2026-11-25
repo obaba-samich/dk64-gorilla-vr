@@ -341,7 +341,7 @@ public:
             dk64vr_body prev, body;
             dk64vr_get_bodies(&prev, &body);
             if (body.active) {
-                if (setting("stick_move") == 0.0) {
+                if ((setting("stick_move") == 0.0) && !body.stick_free) {
                     *x = 0.0f;
                     *y = 0.0f;
                 }
@@ -355,6 +355,15 @@ public:
             }
             if (now < gorillaJumpUntilS) {
                 *buttons |= n64::A;
+            }
+            // gestures: the buttons and climbing stick the game side asked for (also in a Tag
+            // Barrel, where the body isn't driven)
+            if (body.active || (body.mode == DK64VR_BODY_BARREL)) {
+                *buttons |= uint16_t(body.press);
+                if (body.stick_valid) {
+                    *x = std::clamp(body.stick[0], -1.0f, 1.0f);
+                    *y = std::clamp(body.stick[1], -1.0f, 1.0f);
+                }
             }
         }
         if (!autostartBegun && (setting("diag_autostart") > 0.0)) {
@@ -2453,6 +2462,9 @@ private:
         h.max_jump_speed = float(setting("max_jump_speed"));
         h.gorilla = (setting("gorilla_mode") != 0.0) ? 1 : 0;
         h.stick_move = (setting("stick_move") != 0.0) ? 1 : 0;
+        h.gestures = (setting("gestures") != 0.0) ? 1 : 0;
+        h.dominant = dominantHand();  // the shared dominant_hand setting; the other hand throws oranges
+        h.duck_crouch = (setting("duck_crouch") != 0.0) ? 1 : 0;
         dk64vr_publish_hands(&h);
 
         // contact haptics from the game's last frame
@@ -2484,6 +2496,11 @@ private:
         // the head and the game's own aim).
         context.stereoPlay = stereoLatched && !frozen && !cinemaActive && !vrMenuOpen && (state.scene == DK64VR_SCENE_GAMEPLAY);
         context.viewYawRad = moveYawRad();
+        {
+            dk64vr_body prevBody, lastBody;
+            dk64vr_get_bodies(&prevBody, &lastBody);
+            context.gesturesOwnGrips = lastBody.active && (setting("gestures") != 0.0);
+        }
         const float dt = float(std::min(periodS, 0.1));
         if (!s.valid) {
             sfvr_adjust_focus_lost(&adjustmentState);
@@ -3264,6 +3281,14 @@ private:
 
             for (uint32_t x = 96; x < 128; x++) {
                 put(x, y, 0, 0, 0, float(y / 4) / float(FadeLevels - 1));
+            }
+
+            // The cutscene room: opaque flat colours, one 16-row band each (TV bezel, wall,
+            // floor, ceiling). Quads sample a band's middle so filtering never mixes two.
+            for (uint32_t x = 128; x < 192; x++) {
+                static const uint8_t band[4][3] = { { 26, 26, 30 }, { 12, 12, 15 }, { 20, 18, 18 }, { 7, 7, 9 } };
+                const uint8_t *c = band[y / 16];
+                put(x, y, c[0], c[1], c[2], 1.0f);
             }
         }
 
