@@ -20,6 +20,7 @@
 #include "shared/rt64_projection_fog.h"
 #include "shared/rt64_vr_billboard.h"
 #include "dk64vr_menu.h"
+#include "dk64vr_warps.h"
 #include "sfvr/sfvr_adjust.h"
 
 using namespace dk64vr;
@@ -2284,14 +2285,32 @@ static void testMenuModel() {
         CHECK_NEAR(more.closer, -0.1, 1e-6);
     }
 
-    // Bumpers cycle the five tabs and wrap; the standard's order.
-    const menu::Tab order[] = { menu::Tab::Controls, menu::Tab::Hud, menu::Tab::Display, menu::Tab::Room, menu::Tab::Comfort };
+    // Bumpers cycle the six tabs and wrap; the standard's order, Testing last.
+    const menu::Tab order[] = { menu::Tab::Controls, menu::Tab::Hud, menu::Tab::Display, menu::Tab::Room, menu::Tab::Testing, menu::Tab::Comfort };
     for (menu::Tab want : order) {
         press(m, nav::TabRight, t);
         CHECK(m.tab() == want);
     }
     press(m, nav::TabLeft, t);
-    CHECK(m.tab() == menu::Tab::Room);
+    CHECK(m.tab() == menu::Tab::Testing);
+
+    // Testing: the place stepper shows names, Warp closes the menu, Unlock needs a second press.
+    {
+        m.showFull(menu::Tab::Testing);
+        CHECK(int(access.hi("test_warp")) == dk64vr::warps::Count - 1);  // the registry covers the list
+        CHECK(m.valueText("test_warp") == std::string(dk64vr::warps::List[int(access.get("test_warp"))].name));
+        const menu::Effects w = m.act("warp", t);
+        CHECK(w.warp && w.close);
+        const menu::Effects u1 = m.act("unlock", t);
+        CHECK(!u1.unlock);
+        const menu::Effects u2 = m.act("unlock", t + 1.0);
+        CHECK(u2.unlock);
+        const menu::Effects u3 = m.act("unlock", t + 10.0);
+        CHECK(!u3.unlock);
+        const menu::Effects u4 = m.act("unlock", t + 20.0);  // the arming ran out: asks again
+        CHECK(!u4.unlock);
+        m.showFull(menu::Tab::Room);
+    }
 
     // No diagnostics anywhere; the measured rate on Display.
     for (int tab = 0; tab < int(menu::Tab::Count); tab++) {

@@ -34,6 +34,8 @@ struct FrameOut {
     bool recentre = false;
     bool close = false;
     bool hover = false;
+    bool warp = false;
+    bool unlock = false;
     bool rendered = false;     // a new document was drawn
     Screen screen = Screen::Quick;
     Tab tab = Tab::Comfort;

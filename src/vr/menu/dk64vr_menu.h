@@ -88,6 +88,8 @@ struct Effects {
     bool recentre = false;
     bool close = false;
     bool hover = false;  // the pointer moved onto a new control (ui_hover haptic)
+    bool warp = false;    // Testing tab: warp to the place test_warp picks
+    bool unlock = false;  // Testing tab: unlock all Kongs, moves and items (confirmed)
 };
 
 // World size: Donkey Kong's model spans 25.2 game units (docs/VR_ARCHITECTURE.md section 5), so
@@ -107,7 +109,7 @@ const char *dkHeightCompare(double worldScale);
 
 enum class Screen { Quick, Full };
 
-enum class Tab { Comfort, Controls, Hud, Display, Room, Count };
+enum class Tab { Comfort, Controls, Hud, Display, Room, Testing, Count };
 
 class Model {
 public:
@@ -182,6 +184,7 @@ private:
     float dragLeft = 0.0f, dragWidth = 0.0f;
     int armedTab = -1;
     double armedUntilS = 0.0;
+    double unlockArmedUntilS = 0.0;  // "Unlock everything" asks for a second press
     std::string toast;
     double toastUntilS = 0.0;
     uint32_t navPrev = 0;

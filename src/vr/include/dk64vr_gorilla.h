@@ -47,6 +47,10 @@ typedef struct dk64vr_hands {
     int32_t duck_crouch;     // ducking holds Z
     int32_t tag_anywhere;    // left stick flick swaps Kong (experimental)
     int32_t diag_tag;        // diagnostics: a swap each time this counter changes, freed or not
+    int32_t warp_req;        // Testing tab: warp each time this counter changes...
+    int32_t warp_map;        // ...to this map
+    int32_t warp_exit;       // ...and exit
+    int32_t unlock_req;      // Testing tab: unlock everything each time this counter changes
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.

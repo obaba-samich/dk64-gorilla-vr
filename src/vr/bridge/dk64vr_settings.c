@@ -50,6 +50,8 @@ static const sfvr_setting_key port_keys[] = {
 	// The HUD as a watch on the off hand's wrist in arm locomotion; width in metres.
 	{ "wrist_hud", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	{ "wrist_hud_size", SFVR_SETTING_FLOAT, 0.16, 0.08, 0.4, NULL },
+	// Testing tab: the place picked for "Warp there" (an index into src/vr/menu/dk64vr_warps.h).
+	{ "test_warp", SFVR_SETTING_INT, 0.0, 0.0, 68.0, NULL },
 	// Diagnostic: synthetic hands that row along the floor and push off, for this many seconds of
 	// stereo play. 0 = off.
 	{ "diag_gorilla", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
@@ -57,6 +59,12 @@ static const sfvr_setting_key port_keys[] = {
 	{ "diag_gestures", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: every this many seconds of arm locomotion, swap to the next Kong (freed or not).
 	{ "diag_tag_anywhere", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	// Diagnostic: unlock everything (the Testing tab's button) once arm locomotion starts.
+	{ "diag_unlock", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// Diagnostic: every this many seconds of play, warp to the next place on the Testing tab's
+	// list, starting at diag_warp_first. 0 = off.
+	{ "diag_warp_tour", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	{ "diag_warp_first", SFVR_SETTING_INT, 0.0, 0.0, 68.0, NULL },
 	// Immersive eyes only: metres converted by world_scale; 0 restores the game's near for A/B.
 	{ "eye_near_m", SFVR_SETTING_FLOAT, 0.1, 0.0, 0.25, NULL },
 	// Signed third-person head origin adjustment; the native game camera remains the source.
@@ -140,7 +148,7 @@ static const sfvr_setting_key port_keys[] = {
 	// opens that tab instead and leaves it up. 0 = off.
 	{ "diag_vr_menu_at", SFVR_SETTING_FLOAT, 0.0, 0.0, 3600.0, NULL },
 	{ "diag_vr_menu_step", SFVR_SETTING_FLOAT, 2.5, 1.0, 30.0, NULL },
-	{ "diag_vr_menu_tab", SFVR_SETTING_INT, -1.0, -1.0, 4.0, NULL },
+	{ "diag_vr_menu_tab", SFVR_SETTING_INT, -1.0, -1.0, 5.0, NULL },
 	// Diagnostic: a synthetic right hand aiming at the panel (a little right of and above its
 	// centre) whenever no tracked hand is, so the pointer layers can be dumped unattended.
 	{ "diag_pointer", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },

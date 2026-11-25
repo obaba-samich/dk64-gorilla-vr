@@ -638,6 +638,83 @@ static void vr_tag_anywhere(Actor *p) {
     vr_tag_to(p, next);
 }
 
+// --- Testing tab (VR menu): warp anywhere, unlock everything ---------------------------------
+// The host bumps a counter for each request; the game acts once per change, at the same point
+// in the frame upstream's debug warp menu uses. A request waits while there's no player to act
+// on (loading, title screen), so a warp asked for mid-load still happens.
+
+void func_global_asm_805FF378(Maps nextMap, s32 nextExit);   // start a map transition
+void setFlag(s16 flagIndex, u8 newValue, u8 flagType);
+extern u8 D_global_asm_807FC950[];   // PlayerProgress: 6 x 0x5E bytes of Kong progress, then shared items
+
+#define VR_PROG_KONG(k) (D_global_asm_807FC950 + (k) * 0x5E)
+#define VR_PROG_U16(off) (*(u16 *)(D_global_asm_807FC950 + (off)))
+
+static s32 vr_warp_seen;
+static s32 vr_unlock_seen;
+static s32 vr_test_waiting_logged;
+
+static const s16 vr_unlock_flags[] = {
+    6, 0x42, 0x46, 0x75,            // Diddy, Tiny, Lanky, Chunky freed
+    0x179,                          // Fairy camera and Shockwave
+    0x17F, 0x180,                   // training spawned, first Simian Slam given
+    0x182, 0x183, 0x184, 0x185,     // dive, vines, oranges, barrels
+    0x187,                          // all training complete
+};
+
+static void vr_unlock_everything(void) {
+    s32 k, i;
+    u8 *c;
+    for (i = 0; i < (s32)(sizeof(vr_unlock_flags) / sizeof(vr_unlock_flags[0])); i++) {
+        setFlag(vr_unlock_flags[i], 1, 0);
+    }
+    for (k = 0; k < 5; k++) {
+        c = VR_PROG_KONG(k);
+        c[0] = 7;      // Cranky's special moves, all three
+        c[1] = 3;      // Super Duper Simian Slam
+        c[2] = 7;      // gun, homing ammo, sniper scope
+        c[3] = 2;      // second ammo belt
+        c[4] = 15;     // instrument and all three upgrades
+        *(u16 *)(c + 8) = 20;   // instrument energy
+        if (*(u16 *)(c + 6) < 50) {
+            *(u16 *)(c + 6) = 50;   // coins
+        }
+    }
+    VR_PROG_U16(0x2F0) = 200;   // standard ammo
+    VR_PROG_U16(0x2F2) = 200;   // homing ammo
+    VR_PROG_U16(0x2F4) = 20;    // oranges
+    VR_PROG_U16(0x2F6) = 20 * 150;   // crystal coconuts (150 per one on screen)
+    VR_PROG_U16(0x2F8) = 10;    // film
+    D_global_asm_807FC950[0x2FC] = 3;    // melons
+    D_global_asm_807FC950[0x2FB] = 12;   // health, 4 per melon
+    vr_tag_buzz = 1;
+    recomp_printf("[vr-test] unlocked all Kongs, moves and items\n");
+}
+
+static void vr_test_requests(Actor *player) {
+    s32 ready = (player != NULL) && (is_cutscene_active == 0) && (cc_number_of_players == 1);
+    if ((vr_hands.warp_req == vr_warp_seen) && (vr_hands.unlock_req == vr_unlock_seen)) {
+        return;
+    }
+    if (!ready) {
+        if (!vr_test_waiting_logged) {
+            vr_test_waiting_logged = 1;
+            recomp_printf("[vr-test] waiting for play to act on the request\n");
+        }
+        return;
+    }
+    vr_test_waiting_logged = 0;
+    if (vr_hands.unlock_req != vr_unlock_seen) {
+        vr_unlock_seen = vr_hands.unlock_req;
+        vr_unlock_everything();
+    }
+    if (vr_hands.warp_req != vr_warp_seen) {
+        vr_warp_seen = vr_hands.warp_req;
+        recomp_printf("[vr-test] warp to map %d exit %d (from map %d)\n", vr_hands.warp_map, vr_hands.warp_exit, current_map);
+        func_global_asm_805FF378((Maps)vr_hands.warp_map, vr_hands.warp_exit);
+    }
+}
+
 void vr_gorilla_pre_frame(void) {
     Actor *player;
     gtl_input in;
@@ -657,6 +734,7 @@ void vr_gorilla_pre_frame(void) {
     }
     recomp_vr_get_hands(&vr_hands);
     player = character_change_array[0].playerPointer;
+    vr_test_requests(player);
     vr_gst_out.hold = 0;
     vr_gst_out.stick_valid = 0;
     if (!vr_should_drive(player)) {

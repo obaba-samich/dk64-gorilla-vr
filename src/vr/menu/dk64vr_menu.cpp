@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "dk64vr_input.h"
+#include "dk64vr_warps.h"
 
 namespace dk64vr::menu {
 
@@ -149,7 +150,8 @@ struct Opt {
     const char *tile;  // shorter label for a quick-menu tile (nullptr: the same)
 };
 
-const char *TabNames[] = { "Comfort", "Controls", "HUD &amp; menus", "Display &amp; performance", "Room" };
+const char *TabNames[] = { "Comfort", "Controls", "HUD &amp; menus", "Display &amp; performance", "Room", "Testing" };
+static_assert(sizeof(TabNames) / sizeof(TabNames[0]) == size_t(Tab::Count), "a name for every tab");
 
 // PromptFont glyphs (recompinput/promptfont.h), Xbox names as the Frame controllers use them.
 const char *const GA = "\xe2\x87\x93";     // ⇓ A
@@ -196,11 +198,16 @@ namespace {
 
 using Row = Model::Row;
 
+// The stop an action row's button fires: "_warp" -> "warp", "_recentre" -> "recentre".
+std::string actionStop(const Row &r) {
+    return (r.id[0] == '_') ? std::string(r.id + 1) : std::string(r.id);
+}
+
 std::vector<Row> buildRows() {
     using K = Kind;
     using F = Fmt;
     using W = When;
-    const Tab C = Tab::Comfort, Ct = Tab::Controls, H = Tab::Hud, D = Tab::Display, R = Tab::Room;
+    const Tab C = Tab::Comfort, Ct = Tab::Controls, H = Tab::Hud, D = Tab::Display, R = Tab::Room, T = Tab::Testing;
     std::vector<Row> rows = {
         { "defaults_profile", "defaults_profile", C, "Default profile", K::Seg, { { 0, "Standard", nullptr }, { 1, "Frame personal", "Frame" } }, 0, 0, 0, F::None,
           "Choose the defaults used by Reset. Saved choices stay as they are.", W::Always, false, Virt::None, nullptr },
@@ -314,6 +321,13 @@ std::vector<Row> buildRows() {
           "Raise or lower your eye height.", W::Always, true, Virt::None, nullptr },
         { "seated", "seated", R, "Seated mode", K::Toggle, {}, 0, 0, 0, F::None,
           "Adds a standing height while you sit.", W::Always, true, Virt::None, nullptr },
+
+        { "test_warp", "test_warp", T, "Place", K::Stepper, {}, 0, double(warps::Count - 1), 1, F::None,
+          "Levels, lobbies, bosses, races, bonus barrels, arcade games and shops.", W::Always, false, Virt::None, nullptr },
+        { "_warp", nullptr, T, "Warp", K::Action, {}, 0, 0, 0, F::None,
+          "Goes there now, as the current Kong. Leave by the map's exit or warp again.", W::Always, false, Virt::None, nullptr },
+        { "_unlock", nullptr, T, "Unlock everything", K::Action, {}, 0, 0, 0, F::None,
+          "All Kongs, moves, guns, instruments, full ammo, oranges, crystals, film and melons. Saved with this file when the game saves: use a spare file.", W::Always, false, Virt::None, nullptr },
     };
     return rows;
 }
@@ -698,6 +712,27 @@ void Model::activate(const std::string &stop, double now, Effects &e) {
         return;
     }
 
+    if (stop == "warp") {
+        e.warp = true;
+        e.close = true;
+        return;
+    }
+
+    if (stop == "unlock") {
+        if (now < unlockArmedUntilS) {
+            unlockArmedUntilS = 0.0;
+            e.unlock = true;
+            toast = "Unlocked everything";
+        }
+        else {
+            unlockArmedUntilS = now + 3.0;
+            toast = "Press again to unlock everything";
+        }
+        toastUntilS = now + 2.0;
+        dirty = true;
+        return;
+    }
+
     if (stop == "def") {
         defaults(curTab, now);
         return;
@@ -746,7 +781,7 @@ void Model::activate(const std::string &stop, double now, Effects &e) {
             setRow(*r, (rowValue(*r) != 0.0) ? 0.0 : 1.0);
         }
         else if (r->kind == Kind::Action) {
-            activate("recentre", now, e);
+            activate(actionStop(*r), now, e);
         }
     }
 }
@@ -961,6 +996,10 @@ std::string Model::valueText(const std::string &rowId) const {
         case Kind::Height:
             return dkHeightText(v);
         case Kind::Stepper:
+            if (std::strcmp(r->id, "test_warp") == 0) {
+                const int i = std::clamp(int(std::lround(v)), 0, warps::Count - 1);
+                return warps::List[i].name;
+            }
             if (r->virt == Virt::None && std::strcmp(r->id, "resolution_scale") == 0 && v == DK64VR_RESOLUTION_AUTO) {
                 return "Auto";
             }
@@ -1110,9 +1149,12 @@ std::string Model::renderRowControl(const Row &r, bool tile) const {
             out += "<div class=\"p-info\"><div class=\"iv\">" + valueText(r.id) +
                 "</div><div class=\"ic\">Measured. SteamVR's per-app setting for DK64VR decides the real rate.</div></div>";
             break;
-        case Kind::Action:
-            out += "<div class=\"" + cls("recentre", "p-btn primary") + "\"" + attrAct("recentre", true) + ">Recentre now</div>";
+        case Kind::Action: {
+            const std::string a = actionStop(r);
+            const char *label = (a == "warp") ? "Warp there" : (a == "unlock") ? ((nowS < unlockArmedUntilS) ? "Press again" : "Unlock") : "Recentre now";
+            out += "<div class=\"" + cls(a, "p-btn primary") + "\"" + attrAct(a, true) + ">" + label + "</div>";
             break;
+        }
         case Kind::Map: {
             if ((settings.get("gorilla_mode") != 0.0) && (settings.get("gestures") != 0.0)) {
                 // Arm locomotion with gestures: the Quest Touch buttons by name, then the moves

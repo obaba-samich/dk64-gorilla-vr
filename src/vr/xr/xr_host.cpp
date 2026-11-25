@@ -46,6 +46,7 @@
 #include "sfvr/sfvr_perf.h"
 #include "../diag/dk64vr_diag.h"
 #include "../menu/dk64vr_menu_ui.h"
+#include "../menu/dk64vr_warps.h"
 #include "xr_input.h"
 #include "xr_foveation.h"
 
@@ -2317,6 +2318,52 @@ private:
         return quatYaw(headInOriginQ) + turnShownDelta;  // plus the turn the view shows ahead of the game camera
     }
 
+    // Testing tab: warp to the n-th place of src/vr/menu/dk64vr_warps.h.
+    void requestWarp(int n, const char *why) {
+        n = std::clamp(n, 0, warps::Count - 1);
+        testWarpMap = warps::List[n].map;
+        testWarpExit = warps::List[n].exit;
+        testWarpReq++;
+        dk64vr_logf("test: warp to %s (map 0x%x exit %d, %s)", warps::List[n].name, testWarpMap, testWarpExit, why);
+    }
+
+    // diag_unlock and diag_warp_tour: the Testing tab's buttons without a person, once play
+    // has run for a few seconds.
+    void diagTestRequests() {
+        const dk64vr_game_state state = gameState();
+        if ((state.frame == 0) || ((state.scene != DK64VR_SCENE_GAMEPLAY) && (state.scene != DK64VR_SCENE_FIRST_PERSON))) {
+            return;
+        }
+        if (diagTestPlayS == 0.0) {
+            diagTestPlayS = displayS;
+        }
+        if ((setting("diag_unlock") != 0.0) && !diagUnlockDone && (displayS - diagTestPlayS > 3.0)) {
+            diagUnlockDone = true;
+            testUnlockReq++;
+            dk64vr_logf("test: unlock everything (diag_unlock)");
+        }
+        const double every = setting("diag_warp_tour");
+        if (every <= 0.0) {
+            return;
+        }
+        // one stop per `every` seconds of play, counted from the last warp (loads don't count)
+        if (diagWarpLastS != 0.0) {
+            diagWarpPlayed += std::min(displayS - diagWarpLastS, 0.1);  // a gap (loading) counts 0.1 s
+        }
+        diagWarpLastS = displayS;
+        if (diagWarpPlayed >= every) {
+            diagWarpPlayed = 0.0;
+            diagWarpTourDone++;
+            const int i = int(setting("diag_warp_first")) + diagWarpTourDone - 1;
+            if (i < warps::Count) {
+                requestWarp(i, "diag_warp_tour");
+            }
+            else if (i == warps::Count) {
+                dk64vr_logf("test: warp tour done");
+            }
+        }
+    }
+
     // Diagnostic hands (diag_gorilla): row along the floor for four strokes, then a hard push and
     // a release, over and over. Metres, play space, relative to the head.
     void diagGorillaHands(dk64vr_hands &h) {
@@ -2484,6 +2531,11 @@ private:
         if ((setting("diag_tag_anywhere") > 0.0) && (diagGorillaStartS != 0.0)) {
             h.diag_tag = 1 + int((displayS - diagGorillaStartS) / setting("diag_tag_anywhere"));
         }
+        diagTestRequests();
+        h.warp_req = testWarpReq;
+        h.warp_map = testWarpMap;
+        h.warp_exit = testWarpExit;
+        h.unlock_req = testUnlockReq;
         dk64vr_publish_hands(&h);
 
         // contact haptics from the game's last frame
@@ -2915,6 +2967,14 @@ private:
             recentrePending = true;
             sfvr_haptic_event(&input.haptics, SFVR_HAND_BOTH, SFVR_HAPTIC_SYSTEM);
             dk64vr_logf("recentre: VR menu");
+        }
+        if (out.warp) {
+            requestWarp(int(setting("test_warp")), "VR menu");
+        }
+        if (out.unlock) {
+            testUnlockReq++;
+            sfvr_haptic_event(&input.haptics, SFVR_HAND_BOTH, SFVR_HAPTIC_SYSTEM);
+            dk64vr_logf("test: unlock everything (VR menu)");
         }
 
         if (out.hover && s.valid) {
@@ -3975,6 +4035,12 @@ private:
     bool gorillaHandsSeen = false;
     uint32_t gorillaBodyFrameSeen = 0;
     double diagGorillaStartS = 0.0;
+    // Testing tab requests (counters the game acts on once per change)
+    int32_t testWarpReq = 0, testWarpMap = 0, testWarpExit = 0, testUnlockReq = 0;
+    double diagTestPlayS = 0.0;
+    bool diagUnlockDone = false;
+    int diagWarpTourDone = 0;
+    double diagWarpLastS = 0.0, diagWarpPlayed = 0.0;
     bool gorillaLogged = false;
 
     bool hudFailed = false;

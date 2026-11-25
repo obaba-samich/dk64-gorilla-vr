@@ -28,6 +28,10 @@ typedef struct VrHands {
     s32 duck_crouch;
     s32 tag_anywhere;
     s32 diag_tag;
+    s32 warp_req;
+    s32 warp_map;
+    s32 warp_exit;
+    s32 unlock_req;
 } VrHands;
 
 typedef struct VrBody {

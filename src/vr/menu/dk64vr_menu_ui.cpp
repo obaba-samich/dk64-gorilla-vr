@@ -144,6 +144,8 @@ protected:
         for (const std::string &act : s.acts) {
             const Effects more = model.act(act, in.nowS);
             fx.recentre = fx.recentre || more.recentre;
+            fx.warp = fx.warp || more.warp;
+            fx.unlock = fx.unlock || more.unlock;
             fx.close = fx.close || more.close;
         }
         s.acts.clear();
@@ -154,6 +156,8 @@ protected:
         }
         s.access->changes.clear();
         out.recentre = out.recentre || fx.recentre;
+        out.warp = out.warp || fx.warp;
+        out.unlock = out.unlock || fx.unlock;
         out.close = out.close || fx.close;
         out.hover = out.hover || fx.hover;
         out.screen = model.screen();
