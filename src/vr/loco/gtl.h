@@ -1,0 +1,141 @@
+/*
+ * Arm locomotion core.
+ *
+ * You move the way you do in Gorilla Tag: hands that touch the world stay where they touched,
+ * and the body moves opposite to the hand. Letting go throws the body with the hand speed of the
+ * last few frames. There is no walking.
+ *
+ * This file is plain C99 with no libc. It is built three ways:
+ *   - natively for the unit tests (src/vr/loco/tests),
+ *   - inside the game patches (patches/vr_loco_glue.c includes gtl.c) for MIPS recompilation,
+ *   - natively in the host when we want a preview without the game.
+ * So: floats only, no malloc, no stdio, no stdlib. The caller supplies sqrt.
+ *
+ * Units are game units (DK64 uses roughly 15 units per metre at the default world scale).
+ * The caller converts the headset's metres into game units before calling gtl_step.
+ */
+#ifndef GTL_H
+#define GTL_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef GTL_HISTORY_MAX
+#define GTL_HISTORY_MAX 16
+#endif
+
+typedef struct gtl_vec3 {
+    float x, y, z;
+} gtl_vec3;
+
+/* A sphere sweep result. t is the fraction of the move done before touching (0..1). */
+typedef struct gtl_hit {
+    float t;
+    gtl_vec3 normal;
+    float slip;    /* 0 = full grip, 1 = ice. Set by the world from its surface type. */
+    int surface;   /* opaque surface id, passed through to the game for sounds / triggers */
+} gtl_hit;
+
+typedef struct gtl_world {
+    void *user;
+    /* Sweep a sphere of radius r from `from` to `to`. Return nonzero on contact and fill hit.
+     * Must not report a contact when the sphere starts touching and moves away from the surface. */
+    int (*sweep)(void *user, gtl_vec3 from, gtl_vec3 to, float r, gtl_hit *hit);
+    float (*sqrt_fn)(float);
+} gtl_world;
+
+typedef struct gtl_params {
+    float body_radius;
+    float hand_radius;
+    float arm_length;          /* hands never get further than this from the head */
+
+    float jump_multiplier;     /* release speed scale */
+    float max_jump_speed;      /* units per second */
+    float min_launch_speed;    /* below this, letting go just drops you */
+    int history_frames;        /* frames averaged for the launch velocity, 1..GTL_HISTORY_MAX */
+
+    float gravity;             /* units/s^2, positive number, applied along -y */
+    float terminal_velocity;   /* max falling speed */
+    float ground_friction;     /* 1/s, how fast horizontal speed dies when the body rests on ground */
+    float ground_normal_y;     /* surfaces with normal.y above this count as ground */
+
+    float unstick_distance;    /* a stuck hand lets go once the controller is this far from it */
+    float slip_threshold;      /* surfaces with slip >= this never grip */
+
+    /* Water */
+    float paddle_strength;     /* water push per (hand speed)^2; quadratic so slow recovery
+                                  strokes cost less than fast power strokes */
+    float water_drag;          /* 1/s */
+    float buoyancy;            /* units/s^2 upwards while in water, offsets gravity */
+
+    int max_slide_iterations;
+} gtl_params;
+
+enum {
+    GTL_MODE_AIR_GROUND = 0,   /* normal: gravity, hands grip surfaces */
+    GTL_MODE_WATER = 1,        /* swimming: no gravity, hands paddle */
+    GTL_MODE_FROZEN = 2        /* cutscenes etc: hands follow controllers, body does not move */
+};
+
+/* Tracked input, already converted to game units and rotated into the world's yaw.
+ * Positions are relative to the play space origin, not absolute. */
+typedef struct gtl_input {
+    gtl_vec3 head;
+    gtl_vec3 hand[2];
+    int hand_enabled[2];       /* 0 while a hand is busy (holding a gun, an instrument...) */
+    int mode;
+    float dt;
+} gtl_input;
+
+typedef struct gtl_hand {
+    gtl_vec3 pos;              /* where the hand is drawn, world space */
+    int touching;
+    int was_touching;
+    float slip;
+    int surface;
+    gtl_vec3 normal;
+    gtl_vec3 last_rel;         /* controller relative to the head last step, for paddling */
+} gtl_hand;
+
+typedef struct gtl_state {
+    gtl_vec3 origin;           /* world position of the play space origin */
+    gtl_vec3 body;             /* world position of the head / body sphere */
+    gtl_vec3 velocity;         /* free-flight velocity, units per second */
+    gtl_hand hand[2];
+    int grounded;
+    int initialised;
+    gtl_vec3 last_head;        /* tracked head last step (play space) */
+
+    gtl_vec3 history[GTL_HISTORY_MAX];
+    int history_count;
+    int history_head;
+} gtl_state;
+
+/* What happened this step. Useful for haptics and the stats overlay. */
+typedef struct gtl_events {
+    int hand_contact[2];       /* hand touched something this step (rising edge) */
+    float contact_speed[2];    /* how fast the hand was moving when it touched */
+    int hand_release[2];
+    int launched;
+    gtl_vec3 launch_velocity;
+    int landed;
+} gtl_events;
+
+void gtl_default_params(gtl_params *p);
+
+/* Put the body at a world position (spawning, loading zones, warps, cutscene end). */
+void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in);
+
+void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_input *in,
+              gtl_events *ev);
+
+/* Average of the velocity history, the speed you would launch with right now (before the
+ * multiplier). For the speed overlay. */
+gtl_vec3 gtl_history_velocity(const gtl_state *s, const gtl_params *p);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
