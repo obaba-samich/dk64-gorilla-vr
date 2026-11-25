@@ -89,13 +89,14 @@ const Binding indexBindings[] = {
     { ActHapticRight, R_ "output/haptic" },
 };
 
-// Touch: left x/y are X/Y, the left Menu is Start, the left stick click is View, grips are the
-// bumpers. No D-pad.
+// Touch (Quest 2/3/3S): right A/B are the game's A and B (jump, attack), left X/Y are C-left and
+// C-right, the left Menu is Start, the left stick click is View, grips are the bumpers. No D-pad.
+// (The pad layout names: ActX is the N64 B, ActY C-left, ActB C-right.)
 const Binding touchBindings[] = {
     { ActA, R_ "input/a/click" },
-    { ActB, R_ "input/b/click" },
-    { ActX, L_ "input/x/click" },
-    { ActY, L_ "input/y/click" },
+    { ActX, R_ "input/b/click" },
+    { ActY, L_ "input/x/click" },
+    { ActB, L_ "input/y/click" },
     { ActMenu, L_ "input/menu/click" },
     { ActView, L_ "input/thumbstick/click" },
     { ActLBumper, L_ "input/squeeze/value" },
