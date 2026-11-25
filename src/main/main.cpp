@@ -57,6 +57,10 @@
 #include "../../patches/ui.h"
 #include "../../patches/misc_funcs.h"
 
+#ifdef DK64_VR
+#include "../vr/xr/dk64vr_host.h"
+#endif
+
 namespace {
 
 class PacingRendererContext final : public ultramodern::renderer::RendererContext {
@@ -225,6 +229,16 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_METAL;
 #elif defined(RT64_SDL_WINDOW_VULKAN)
     flags |= SDL_WINDOW_VULKAN;
+#endif
+
+#ifdef DK64_VR
+    // In VR nothing is presented to the desktop window, and SteamVR shows a mapped game window as a
+    // desktop-game panel in its dashboard: black, in front of the launcher. Keep it unmapped.
+    // Real pads keep working without window focus.
+    if (dk64vr::hostActive()) {
+        flags |= SDL_WINDOW_HIDDEN;
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    }
 #endif
 
     window = SDL_CreateWindow("DK64: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 900,  flags);
@@ -675,7 +689,26 @@ void on_launcher_init(recompui::LauncherMenu *menu) {
     menu->remove_default_title();
 
     dk64::launcher_animation_setup(menu);
+#ifdef DK64_VR
+    // The VR settings menu's document, created on recompui's thread like the launcher's.
+    dk64vr::hostUiInit();
+#endif
 }
+
+#ifdef DK64_VR
+// Player input as the game reads it, with the VR diagnostics' input merged in (diag_autostart).
+static bool get_n64_input_vr(int player_index, uint16_t* buttons_out, float* x_out, float* y_out) {
+    bool result = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
+    dk64vr::hostFilterInput(player_index, buttons_out, x_out, y_out);
+    return result;
+}
+
+// The game's Rumble Pak motor, to the real pad as before and to the VR controllers' haptics.
+static void set_rumble_vr(int controller_num, bool on) {
+    recompinput::set_rumble(controller_num, on);
+    dk64vr::hostSetRumble(controller_num, on);
+}
+#endif
 
 #define REGISTER_FUNC(name) recomp::overlays::register_base_export(#name, name)
 
@@ -842,8 +875,13 @@ int main(int argc, char** argv) {
 
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recompinput::poll_inputs,
+#ifdef DK64_VR
+        .get_input = get_n64_input_vr,
+        .set_rumble = set_rumble_vr,
+#else
         .get_input = recompinput::profiles::get_n64_input,
         .set_rumble = recompinput::set_rumble,
+#endif
         .get_connected_device_info = get_connected_device_info,
     };
 
@@ -891,7 +929,20 @@ int main(int argc, char** argv) {
         },
     };
 
+#ifdef DK64_VR
+    // The OpenXR host, before the renderer creates its Vulkan instance (docs/VR_ARCHITECTURE.md).
+    // Only when VR was asked for, so a flat run never loads OpenXR. Without a headset runtime
+    // the game stays flat.
+    if (dk64vr::hostRequested(argc, argv, recompui::file::get_app_folder_path())) {
+        dk64vr::hostInstall(recompui::file::get_app_folder_path());
+    }
+#endif
+
     recomp::start(cfg);
+
+#ifdef DK64_VR
+    dk64vr::hostShutdown();
+#endif
 
     NFD_Quit();
 

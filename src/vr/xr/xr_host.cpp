@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -3593,6 +3594,36 @@ bool hostInstall(const std::filesystem::path &appFolder) {
     }
 
     return true;
+}
+
+bool hostRequested(int argc, char **argv, const std::filesystem::path &appFolder) {
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--flat") == 0) {
+            return false;
+        }
+    }
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--vr") == 0) {
+            return true;
+        }
+    }
+    if (const char *env = std::getenv("DK64_VR"); env != nullptr && env[0] != '\0') {
+        return env[0] != '0';
+    }
+    std::FILE *f = std::fopen((appFolder / "vr.toml").string().c_str(), "r");
+    if (f == nullptr) {
+        return false;
+    }
+    bool on = false;
+    char line[256];
+    while (std::fgets(line, sizeof(line), f) != nullptr) {
+        char value[16] = {};
+        if (std::sscanf(line, " vr_enabled = %15s", value) == 1) {
+            on = std::strcmp(value, "true") == 0 || std::strcmp(value, "1") == 0;
+        }
+    }
+    std::fclose(f);
+    return on;
 }
 
 bool hostActive() {

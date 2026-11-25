@@ -12,6 +12,11 @@ namespace dk64vr {
 // Returns false (and leaves the flat game untouched) when there is no headset runtime.
 bool hostInstall(const std::filesystem::path &appFolder);
 
+// Whether VR was asked for: --vr on the command line, DK64_VR=1 in the environment, or
+// "vr_enabled = true" in the app folder's vr.toml (the launcher toggle writes that).
+// --flat or DK64_VR=0 force it off.
+bool hostRequested(int argc, char **argv, const std::filesystem::path &appFolder);
+
 // True once hostInstall found a headset: the game runs in VR. The desktop window is then created
 // hidden (docs/VR_ARCHITECTURE.md section 4): nothing is ever presented to it, and a mapped,
 // never-drawn window is what SteamVR's dashboard shows as a black desktop-game panel.
