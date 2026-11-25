@@ -359,6 +359,9 @@ public:
             // gestures: the buttons and climbing stick the game side asked for (also in a Tag
             // Barrel, where the body isn't driven)
             if (body.active || (body.mode == DK64VR_BODY_BARREL)) {
+                if (body.gun_out && (setting("gestures") != 0.0) && (dominantHand() == 0)) {
+                    *buttons &= uint16_t(~n64::Z);  // left trigger fires the gun, so it isn't Z then
+                }
                 *buttons |= uint16_t(body.press);
                 if (body.stick_valid) {
                     *x = std::clamp(body.stick[0], -1.0f, 1.0f);
