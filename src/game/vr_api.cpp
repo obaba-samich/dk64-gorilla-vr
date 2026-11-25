@@ -204,3 +204,57 @@ extern "C" void recomp_vr_take_hud_diag(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     _return(ctx, dk64vr_take_hud_diag());
 }
+
+// Arm locomotion (src/vr/include/dk64vr_gorilla.h). The host writes the controllers once per
+// display frame, the game reads them once per game frame and publishes where the body went.
+// Small structs and two threads, so a mutex is plenty.
+
+#include "../src/vr/include/dk64vr_gorilla.h"
+
+static_assert(sizeof(dk64vr_hands) % 4 == 0 && sizeof(dk64vr_body) % 4 == 0, "word structs");
+static_assert(sizeof(dk64vr_hands) == 4 * 39, "hands layout changed; update patches/vr_gorilla.h");
+static_assert(sizeof(dk64vr_body) == 4 * 19, "body layout changed; update patches/vr_gorilla.h");
+
+namespace {
+std::mutex g_hands_mutex;
+dk64vr_hands g_hands = {};
+std::mutex g_body_mutex;
+dk64vr_body g_body_prev = {};
+dk64vr_body g_body_latest = {};
+}
+
+extern "C" void dk64vr_publish_hands(const dk64vr_hands* hands) {
+    std::lock_guard<std::mutex> lock(g_hands_mutex);
+    g_hands = *hands;
+}
+
+extern "C" void dk64vr_get_hands(dk64vr_hands* out) {
+    std::lock_guard<std::mutex> lock(g_hands_mutex);
+    *out = g_hands;
+}
+
+extern "C" void dk64vr_publish_body(const dk64vr_body* body) {
+    std::lock_guard<std::mutex> lock(g_body_mutex);
+    g_body_prev = g_body_latest;
+    g_body_latest = *body;
+}
+
+extern "C" void dk64vr_get_bodies(dk64vr_body* previous, dk64vr_body* latest) {
+    std::lock_guard<std::mutex> lock(g_body_mutex);
+    *previous = g_body_prev;
+    *latest = g_body_latest;
+}
+
+extern "C" void recomp_vr_get_hands(uint8_t* rdram, recomp_context* ctx) {
+    dk64vr_hands* out = _arg<0, dk64vr_hands*>(rdram, ctx);
+    dk64vr_get_hands(out);
+    if (!dk64vr_is_active()) {
+        out->valid = 0;
+        out->gorilla = 0;
+    }
+}
+
+extern "C" void recomp_vr_publish_body(uint8_t* rdram, recomp_context* ctx) {
+    const dk64vr_body* body = _arg<0, const dk64vr_body*>(rdram, ctx);
+    dk64vr_publish_body(body);
+}
