@@ -697,9 +697,10 @@ void vr_gorilla_post_frame(void) {
     recomp_vr_publish_body(&vr_body);
 }
 
-// @recomp: the actor movement step. For the player while arm locomotion holds on, the move is the
-// hands' displacement instead of speed along the heading; everything after it (walls, floors,
-// triggers) runs as normal. Otherwise unchanged from the decomp.
+// @recomp: the actor movement step. For the player while a hand holds on (or paddles), the move is
+// the hands' displacement instead of speed along the heading; with nothing held the head's own
+// room-scale walk is added before the game's move. Everything after it (walls, floors, triggers)
+// runs as normal. Otherwise unchanged from the decomp.
 extern u32 D_global_asm_80744478;
 
 RECOMP_PATCH void func_global_asm_806651FC(Actor *arg0) {
@@ -712,13 +713,15 @@ RECOMP_PATCH void func_global_asm_806651FC(Actor *arg0) {
         arg0->x_position += vr_disp.x;
         arg0->y_position += vr_disp.y;
         arg0->z_position += vr_disp.z;
+        vr_drive = 0;
         if (vr_loco.hand[0].touching || vr_loco.hand[1].touching || vr_in_water) {
-            // held up by the hands, or paddling: don't build up the game's own speed
+            // held up by the hands, or paddling: the hands are the whole move
             arg0->y_velocity = 0.0f;
             arg0->unkB8 = 0.0f;
+            return;
         }
-        vr_drive = 0;
-        return;
+        // nothing held: the tracked head's walk adds to the game's own move (gravity, jumps,
+        // throws), it doesn't replace it
     }
 
     var_f20 = arg0->unkB8;
