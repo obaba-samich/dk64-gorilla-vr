@@ -72,3 +72,18 @@ gamecontrollerdb.txt
 # Just linux things
 build.log
 DK64Recompiled
+# Game data never goes in this repo: ROMs, archives of them, saves,
+# extracted assets and anything generated from the ROM.
+*.zip
+*.7z
+*.rar
+*.eep
+*.sra
+*.fla
+*.mpk
+baserom*
+rsp/n_aspMain.cpp
+extracted/
+assets_extracted/
+RecompModTool
+build-*/
