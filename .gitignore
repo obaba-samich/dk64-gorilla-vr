@@ -87,3 +87,6 @@ extracted/
 assets_extracted/
 RecompModTool
 build-*/
+
+run/
+build-tools/
