@@ -1168,6 +1168,16 @@ public:
             if (panelShown && panelReady.load()) {
                 const float width = float(setting("panel_width"));
                 const Pose panel = panelPose();
+                // DK Arcade and Jetpac: the same TV room around the screen
+                if (uiReady && (setting("cinema_room") != 0.0) && (gameState().scene == DK64VR_SCENE_ARCADE)) {
+                    std::vector<XrCompositionLayerQuad> &arcadeRoom = arcadeRoomStorage;
+                    arcadeRoom.clear();
+                    const float height = width * float(panelChain.height) / float(panelChain.width);
+                    addRoomAround(arcadeRoom, panel, width, height, float(setting("panel_distance")));
+                    for (const XrCompositionLayerQuad &q : arcadeRoom) {
+                        layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&q));
+                    }
+                }
                 quad.space = localSpace;
                 quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
                 quad.layerFlags = panelImageUiOnly.load() ? XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT : 0;
@@ -3405,8 +3415,13 @@ private:
     }
 
     void addCinemaRoom(std::vector<XrCompositionLayerQuad> &quads) const {
-        const float w = cinemaRoomSize[0], h = cinemaRoomSize[1];
-        const float d = float(setting("cinema_distance"));
+        addRoomAround(quads, cinemaScreen, cinemaRoomSize[0], cinemaRoomSize[1], float(setting("cinema_distance")));
+    }
+
+    // A dark room with a TV whose picture is the rectangle `screen` (w x h metres, facing +z), the
+    // viewer about d metres in front of it.
+    void addRoomAround(std::vector<XrCompositionLayerQuad> &quads, const Pose &screen, float w, float h, float d) const {
+        const Pose &cinemaScreen = screen;
         const float bezel = 0.06f * w;
         const float halfRoom = std::max(4.0f, 0.5f * w + bezel + 1.5f);
         const float floorY = -1.5f, ceilY = std::max(1.5f, 0.5f * h + bezel + 0.5f);
@@ -3746,6 +3761,7 @@ private:
     bool uiReady = false;
     std::vector<XrCompositionLayerQuad> extraQuadStorage;
     std::vector<XrCompositionLayerQuad> roomQuadStorage;
+    std::vector<XrCompositionLayerQuad> arcadeRoomStorage;
     bool cinemaRoomShown = false;
     float cinemaRoomSize[2] = { 3.6f, 2.0f };
     std::mutex panelMutex;
