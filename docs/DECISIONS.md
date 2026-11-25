@@ -128,3 +128,41 @@ The game's swap (`playerSetKongByActorType`) works on the "current actor" global
 model buffers each time; it has to run inside the player's own update with the right checks
 (Kong freed, on the ground, nothing held, no cutscene). Calling it from the frame hook risks a
 broken actor or a bad save, so it isn't in this pass. Tag Barrels work. FUTURE.md has the plan.
+
+### D23. Head walking adds to the game's move, it doesn't replace it
+With no hand holding on, the tracked head's room-scale motion used to replace the whole movement
+step, which also skipped gravity, jump speed and throws whenever the head moved at all (always,
+in a real headset; the simulator's head is still, so it never showed). Now the head's motion is
+added and the game's own move runs after it. Only a holding or paddling hand replaces the move.
+
+### D24. Climbing found by behaviour, not by state numbers
+The newer DK64 decomp names its player state table, but the names don't hold up: state 0x0C,
+called "climb tree" there, is the plain movement state (the recomp's own decomp sets it after a
+Kong swap, after Mini Monkey ends and after the Ice Tomato game, each followed by "resume
+movement"), and 0x1E ("fall damage land") is ordinary falling. So no state lists from those names.
+- **Climbing** (vine, rope, tree, ladder, ledge hang): off the ground, no vertical speed, no hand
+  held, for 6 frames. First person stays, the arms stop driving and gripping, and grip-overhead
+  hand-over-hand (or the left stick) climbs.
+- **Scripted moves** (Baboon Blast flights and the like) are left to the game: with D23 the arms
+  only replace the move while a hand holds on.
+- **Swimming**: the head under the water, or the body in it with the head just above (surface
+  swimming, where paddling only moves along the water).
+- **Tag Barrel**: states 7 / 0xA / 0xB come from the barrel's own input handler (stick X turns
+  7 into 0xA / 0xB), so leaning stays.
+- Tag Anywhere only runs in state 0x0C.
+
+### D25. Recentre and snap turn start the hands fresh
+Both move every hand position at once. A holding hand would drag the body, and the jump looked
+like a throw. The locomotion core is reset on a turn or a head jump of more than 35 cm.
+
+### D26. Tag Anywhere, experimental and off by default
+Ported from the DK64 Randomizer's own (MIT): hand models, HUD Kong, the character swap, resume
+movement. It runs only in plain standing play: on the ground, normal state, no cutscene, no gun
+out, nothing held, normal size, no Strong Kong / sprint / Gorilla Gone, not in Helm, K. Rool,
+Troff 'n' Scoff or vehicle maps, and only to freed Kongs (the pause menu's flags 6 / 0x46 / 0x42 /
+0x75). Trigger: flick the left stick left or right (unused in arm mode). This replaces D22.
+
+### D27. A controls page written for the Quest, shown once
+The VR menu's controller map showed the third-person Xbox layout. With arm locomotion and
+gestures on it now lists the Quest buttons by name and every gesture. The first time arm
+locomotion takes over, the VR menu opens on that page once (`arms_intro_shown`).

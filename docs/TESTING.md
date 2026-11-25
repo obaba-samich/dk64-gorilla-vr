@@ -10,7 +10,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Test | How | Status |
 |---|---|---|
 | Locomotion core: 26 cases (stick, push, launch, cap, history, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
-| Gestures: 19 cases (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
+| Gestures: 20 cases (adds: no crouch while a hand rows) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
 
@@ -49,9 +49,12 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Throw → jump with the throw's speed | 🧪 | `jump started, speed set to` log lines |
 | Climbing a ledge / step by pulling down | ⬜ | wall contacts from floor-height steps; not exercised by the synthetic hands |
 | Flat walls stop the body | ⬜ | relies on the game's wall pass |
-| Swimming by paddling | ⬜ | code in, never reached in the sim |
+| Swimming by paddling, under water and at the surface | ⬜ | code in, never reached in the sim |
 | Slippery surfaces (Caves ice, slides) | ⬜ | surface 0xC slips (D20); not reached in the sim |
-| Snap turn in first person | ⬜ | wired through `recomp_vr_take_turn`, not exercised |
+| Snap turn in first person | 🧪 | `diag_turn_stick`: turns every 8 s while rowing, no hand drag or false throws |
+| Recentre with a hand held | ⬜ | hands reset on a head jump over 35 cm (D25); needs a real recentre |
+| Head walking doesn't stop gravity / jumps | ⬜ | fixed by reading the code (D23); only a moving real head shows it |
+| Climbing mode (vines, trees, ladders, ledges) | ⬜ | behaviour-based (D24); the sim's rowing never hangs on anything |
 | Per-Kong bodies | ⬜ | table in place, only DK tested |
 | Haptics on contact | ⬜ | sent; Monado has no haptics |
 | Wrist HUD | ⬜ | placed on the off hand's aim pose; the sim's hands have no real pose |
@@ -65,8 +68,8 @@ gestures press the same combos, so a gesture "works" when its buttons arrive; wh
 happens is the game's call (owned move, ammo, pad).
 
 The sim column: `diag_gestures` runs a scripted routine through the host, and the game logs
-`[vr-gesture] events`. Seen in the sim (2026-11-24): punch, double punch (Z+B), gun draw /
-holster (Z+C-left), orange (Z+C-right). Firing needs a gun, which the test save doesn't have yet.
+`[vr-gesture] events`. Seen in the sim (2026-11-24 and 2026-11-25): punch, double punch (Z+B),
+gun draw / holster (Z+C-left), orange (Z+C-right), with snap turns and Kong swaps in the same run. Firing needs a gun, which the test save doesn't have yet.
 
 | Ability | Gesture | Unit test | Sim | Headset |
 |---|---|---|---|---|
@@ -81,7 +84,7 @@ holster (Z+C-left), orange (Z+C-right). Firing needs a gun, which the test save 
 | Crouch, pads (Baboon Blast, Spring, Balloon, Monkeyport...) | duck = Z | ✅ | ⬜ | ⬜ |
 | Rocketbarrel, Baboon Balloon flight | left stick after 0.8 s in the air | — | ⬜ | ⬜ |
 | Tag Barrels | jump in, lean to turn, fling up = A | — | ⬜ | ⬜ |
-| Tag Anywhere | not done (D22) | — | ❌ | ❌ |
+| Tag Anywhere (experimental, off by default) | left stick flick | — | 🧪 12 forced swaps through all five Kongs, clean exit | ⬜ |
 
 ## Playthrough
 

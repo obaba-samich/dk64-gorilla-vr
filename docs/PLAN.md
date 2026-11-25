@@ -13,7 +13,7 @@ in progress / todo.
 | 6 | Locomotion wired into DK64 with its collision | done (sim) | Rowing, falls, throws, swimming code, slippery surface 0xC. Walls with no top surface only stop the body (D11). |
 | 7 | Shared moves: gun, oranges, vines, ladders, Simian Slam | done (sim) | Gestures (D16): slam, gun draw / fire, orange throw, punch, climbing stick. Unit tested; punch and gun draw seen in the sim. Ownership and ammo are the game's. |
 | 8 | Per-Kong abilities and instruments | done (sim) | Instrument pose, Kong special (double jab = Z+B), twirl glide (arms out in the air), crouch by ducking for pads. Needs a headset playtest per Kong. |
-| 9 | Tag Barrels, per-Kong bodies, Tag Anywhere | partial | Tag Barrels: lean to turn, fling to pick (D18). Per-Kong bodies in place. Tag Anywhere not done (D22). |
+| 9 | Tag Barrels, per-Kong bodies, Tag Anywhere | done (sim) | Tag Barrels: lean to turn, fling to pick (D18). Per-Kong bodies in place. Tag Anywhere experimental, off by default (D26). |
 | 10 | Vehicles, transformations, minigames, cutscenes, bosses | done (sim) | Mode per situation (D18). Cutscenes / arcades on a TV in a dark room (D19). Bosses run in arm mode except Pufftoss and the K. Rool Diddy phase. |
 | 11 | Wrist HUD, menus on the virtual screen, settings/comfort menu | done (sim) | Wrist HUD (D21). All arm locomotion, gesture and room settings in the VR settings menu. |
 | 12 | Extras | partial | Contact haptics. Stats overlay, timer and trails not done. |

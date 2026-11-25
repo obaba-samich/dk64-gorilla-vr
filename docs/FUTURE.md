@@ -24,12 +24,9 @@ it up:
 
 ## Next up (not Kong Tag)
 
-- **Tag Anywhere.** Swap Kongs without a barrel (a radial on a held button). The game's swap is
-  `playerSetKongByActorType` (0x806C8E58), the same call the DK64 Randomizer uses. It must run
-  inside the player's update (it uses the current-actor globals and allocates model buffers), and
-  only when the Kong is freed, the player stands on the ground in a normal state, nothing is held
-  and no cutscene runs. Plan: a patch on the player update that checks a request flag set by the
-  gesture layer. See D22.
+- **Tag Anywhere out of experimental.** It works in the simulator (D26). Before turning it on by
+  default: a headset run through every level, saving and reloading after swaps, and the bonus
+  barrel / boss maps that may need adding to the banned list.
 - **Real wall query.** Hands find walls through floor-height steps (D11). Proper walls need the
   wall triangle format (pointer table 2, `TABLE_02_MAP_WALLS`) or a matched
   `func_global_asm_8066A08C`. With it, `vr_sweep` gets one more test and room walls become climbable.
