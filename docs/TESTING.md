@@ -10,6 +10,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Test | How | Status |
 |---|---|---|
 | Locomotion core: 26 cases (stick, push, launch, cap, history, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
+| Gestures: 19 cases (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
 
@@ -49,32 +50,54 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Climbing a ledge / step by pulling down | ⬜ | wall contacts from floor-height steps; not exercised by the synthetic hands |
 | Flat walls stop the body | ⬜ | relies on the game's wall pass |
 | Swimming by paddling | ⬜ | code in, never reached in the sim |
-| Slippery surfaces (Caves ice, slides, oil) | ❌ | surface ids are logged (`[vr-loco] hand N on surface S`) but not mapped to slip yet |
+| Slippery surfaces (Caves ice, slides) | ⬜ | surface 0xC slips (D20); not reached in the sim |
 | Snap turn in first person | ⬜ | wired through `recomp_vr_take_turn`, not exercised |
 | Per-Kong bodies | ⬜ | table in place, only DK tested |
 | Haptics on contact | ⬜ | sent; Monado has no haptics |
+| Wrist HUD | ⬜ | placed on the off hand's aim pose; the sim's hands have no real pose |
+| Cutscene TV room, arcade room | ⬜ | layers submitted; Monado's null compositor shows nothing, eye dumps don't include quads |
+| Control modes (arms / third person / barrel) | 🧪 | `[vr-loco] mode` lines: arms on DK Isles; the others need the maps |
 
 ## Abilities
 
-All of these still work through the buttons (the stick is the only thing taken away; turn on
-`stick_move` for moves that need it, like Orangstand Sprint). Gestures are not implemented yet.
+Every ability works on the buttons as before, and has a gesture (docs/DECISIONS.md D16). The
+gestures press the same combos, so a gesture "works" when its buttons arrive; whether the move
+happens is the game's call (owned move, ammo, pad).
 
-| Ability | Buttons | Gesture | Checked |
-|---|---|---|---|
-| Simian Slam (all levels) | buttons | ❌ | ⬜ |
-| Oranges | buttons | ❌ | ⬜ |
-| Guns (all five) | buttons | ❌ | ⬜ |
-| Instruments (all five) | buttons | ❌ | ⬜ |
-| Vines | buttons | ❌ | ⬜ |
-| Ladders | buttons | ❌ | ⬜ |
-| Baboon Blast, Strong Kong, Gorilla Grab | buttons | ❌ | ⬜ |
-| Chimpy Charge, Rocketbarrel, Simian Spring | buttons | ❌ | ⬜ |
-| Orangstand, Orangstand Sprint, Baboon Balloon | buttons (+ stick_move) | ❌ | ⬜ |
-| Mini Monkey, Pony Tail Twirl, Monkeyport | buttons | ❌ | ⬜ |
-| Hunky Chunky, Primate Punch, Gorilla Gone | buttons | ❌ | ⬜ |
-| Tag Barrels | A at the barrel | ❌ | ⬜ |
+The sim column: `diag_gestures` runs a scripted routine through the host, and the game logs
+`[vr-gesture] events`. Seen in the sim (2026-11-24): punch, double punch (Z+B), gun draw /
+holster (Z+C-left), orange (Z+C-right). Firing needs a gun, which the test save doesn't have yet.
+
+| Ability | Gesture | Unit test | Sim | Headset |
+|---|---|---|---|---|
+| Simian Slam | both hands down hard in the air | ✅ | ⬜ | ⬜ |
+| Punch | fast jab | ✅ | 🧪 | ⬜ |
+| Kong special (Chimpy Charge, Primate Punch, Orangstand...) | double jab | ✅ | 🧪 | ⬜ |
+| Guns (all five) | dominant hand grip at hip, trigger fires | ✅ | 🧪 draw only | ⬜ |
+| Oranges | off hand grip at hip, throw, release | ✅ | 🧪 | ⬜ |
+| Instruments (all five) | both hands up front, both grips | ✅ | ⬜ | ⬜ |
+| Vines, ladders, trees | grip overhead, pull | ✅ | ⬜ | ⬜ |
+| Pony Tail Twirl | arms out wide in the air | ✅ | ⬜ | ⬜ |
+| Crouch, pads (Baboon Blast, Spring, Balloon, Monkeyport...) | duck = Z | ✅ | ⬜ | ⬜ |
+| Rocketbarrel, Baboon Balloon flight | left stick after 0.8 s in the air | — | ⬜ | ⬜ |
+| Tag Barrels | jump in, lean to turn, fling up = A | — | ⬜ | ⬜ |
+| Tag Anywhere | not done (D22) | — | ❌ | ❌ |
 
 ## Playthrough
 
-Not started. Every level, boss, shop, race and minigame still needs a run in the headset, with notes
-here.
+Not done yet; it needs a headset. The step-by-step list (setup, basics, arms, gestures, Kongs and
+barrels, vehicles and minigames, bosses, settings) is kept with the project notes and handed over
+with each build. Results go here, per level:
+
+| Level | Arms | Gestures | Bosses / minigames | Notes |
+|---|---|---|---|---|
+| DK Isles | ⬜ | ⬜ | — | |
+| Jungle Japes | ⬜ | ⬜ | Army Dillo, minecart | |
+| Angry Aztec | ⬜ | ⬜ | Dogadon, beetle race | |
+| Frantic Factory | ⬜ | ⬜ | Mad Jack, car race, DK Arcade, Jetpac | |
+| Gloomy Galleon | ⬜ | ⬜ | Pufftoss, seal race | |
+| Fungi Forest | ⬜ | ⬜ | Dogadon 2, minecart | |
+| Crystal Caves | ⬜ | ⬜ | Army Dillo 2, beetle race, ice | |
+| Creepy Castle | ⬜ | ⬜ | King Kut Out, minecart, car race | |
+| Hideout Helm | ⬜ | ⬜ | Helm barrels | |
+| K. Rool | ⬜ | ⬜ | five phases | |
