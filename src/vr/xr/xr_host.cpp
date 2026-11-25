@@ -3349,6 +3349,24 @@ private:
         quad.subImage.imageRect.extent = { int32_t(hudChain.width), int32_t(hudChain.height) };
         quad.pose = toXr(noRollPose(facing, head.p, distance));
         quad.size = { width, width * 0.75f };
+        // Arm locomotion: the HUD is a watch on the off hand's wrist (wrist_hud), face up
+        // off the back of the hand, so a glance shows bananas, coins and health.
+        {
+            dk64vr_body prevBody, lastBody;
+            dk64vr_get_bodies(&prevBody, &lastBody);
+            Pose aim;
+            const int hand = 1 - dominantHand();
+            if (lastBody.active && (setting("wrist_hud") != 0.0) && input.aimPose(hand, aim)) {
+                const float s45 = 0.70710678f;
+                const float tilt = 0.35f;  // lean the face towards the eyes a little
+                Pose onWrist;
+                onWrist.p = { (hand == 0) ? 0.01f : -0.01f, 0.035f, 0.11f };
+                onWrist.q = quatMul(Quat { -s45, 0.0f, 0.0f, s45 }, Quat { std::sin(0.5f * tilt), 0.0f, 0.0f, std::cos(0.5f * tilt) });
+                const float wristWidth = float(setting("wrist_hud_size"));
+                quad.pose = toXr(poseMul(aim, onWrist));
+                quad.size = { wristWidth, wristWidth * 0.75f };
+            }
+        }
         if (cinemaActive && cinemaAnchored) {
             quad.pose = toXr(cinemaHudPose);
             quad.size = { cinemaHudSize[0], cinemaHudSize[1] };
