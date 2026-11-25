@@ -3083,10 +3083,11 @@ private:
             { "closed", nav::Back, 0, "", false, nullptr },
         };
         const int tabOnly = int(setting("diag_vr_menu_tab"));
-        static const char *const tabActs[] = { "tab:0", "tab:1", "tab:2", "tab:3", "tab:4" };
+        static const char *const tabActs[] = { "tab:0", "tab:1", "tab:2", "tab:3", "tab:4", "tab:5" };
+        static_assert(sizeof(tabActs) / sizeof(tabActs[0]) == size_t(menu::Tab::Count), "a tour stop per tab");
         const TourStep tabTour[] = {
             { "c-open", 0, 0, "", false, nullptr },
-            { "b-tab", 0, 0, "", false, (tabOnly >= 0 && tabOnly <= 4) ? tabActs[tabOnly] : "tab:0" },
+            { "b-tab", 0, 0, "", false, (tabOnly >= 0 && tabOnly < int(menu::Tab::Count)) ? tabActs[tabOnly] : "tab:0" },
         };
         const TourStep *steps = (tabOnly >= 0) ? tabTour : fullTour;
         const int count = (tabOnly >= 0) ? 2 : int(sizeof(fullTour) / sizeof(fullTour[0]));
