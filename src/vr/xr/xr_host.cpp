@@ -35,6 +35,7 @@
 
 #include "dk64vr_camsmooth.h"
 #include "dk64vr_game_state.h"
+#include "dk64vr_gorilla.h"
 #include "dk64vr_input.h"
 #include "dk64vr_control.h"
 #include "dk64vr_log.h"
@@ -332,6 +333,30 @@ public:
         }
 
         const double now = monotonicSeconds();
+
+        // Arm locomotion owns movement: the stick stays centred unless comfort stick movement is
+        // on, and a throw becomes a short A press so the game starts its own jump (the patch then
+        // swaps in the throw's speed, patches/vr_gorilla.c).
+        {
+            dk64vr_body prev, body;
+            dk64vr_get_bodies(&prev, &body);
+            if (body.active) {
+                if (setting("stick_move") == 0.0) {
+                    *x = 0.0f;
+                    *y = 0.0f;
+                }
+                if (body.launch_count != gorillaLaunchSeen) {
+                    gorillaLaunchSeen = body.launch_count;
+                    gorillaJumpUntilS = now + 0.1;
+                }
+            }
+            else {
+                gorillaLaunchSeen = body.launch_count;
+            }
+            if (now < gorillaJumpUntilS) {
+                *buttons |= n64::A;
+            }
+        }
         if (!autostartBegun && (setting("diag_autostart") > 0.0)) {
             autostartBegun = true;
             autostart.start(now, setting("diag_autostart"));
@@ -664,6 +689,12 @@ public:
             return;
         }
 
+        // Arm locomotion: first person at the body the game published, interpolated to this
+        // display frame. The game's camera is ignored; the head pose comes from the runtime.
+        if (firstPersonView(eye, gameProj, outView, outProj)) {
+            return;
+        }
+
         // Camera smoothing: one rigid correction for the display frame, applied to every camera
         // projection of both eyes (docs 5c).
         if (camCorrectionFrame != frameCount) {
@@ -723,6 +754,37 @@ public:
             dk64vr_logpf("[vr-cam]", "depth f %" PRIu64 " near %.4f units (%.3f m) far %.1f units sky_margin %.8g fog %.8g %.8g", frameCount,
                 nearZ, nearZ / float(setting("world_scale")), farZ, margin, fog.a, fog.b);
         }
+    }
+
+    bool firstPersonView(uint32_t eye, const Mat4 &gameProj, float outView[16], float outProj[16]) {
+        dk64vr_body prev, body;
+        dk64vr_get_bodies(&prev, &body);
+        const dk64vr_game_state state = gameState();
+        if (!body.active || ((state.scene != DK64VR_SCENE_GAMEPLAY) && (state.scene != DK64VR_SCENE_FIRST_PERSON))) {
+            return false;
+        }
+
+        // Between the last two game frames, by the same weight the rest of the frame uses.
+        const float w = (prev.active && (prev.frame + 1 == body.frame)) ? scheduler.weight(displayS) : 1.0f;
+        const Vec3 head {
+            prev.head[0] + (body.head[0] - prev.head[0]) * w,
+            prev.head[1] + (body.head[1] - prev.head[1]) * w,
+            prev.head[2] + (body.head[2] - prev.head[2]) * w,
+        };
+        const float yaw = prev.yaw + wrapAngle(body.yaw - prev.yaw) * w;
+        const Vec3 at { head.x + std::sin(yaw), head.y, head.z + std::cos(yaw) };
+        const Mat4 view = guLookAt(head, at, Vec3 { 0.0f, 1.0f, 0.0f });
+        const float scale = float(setting("gorilla_world_scale"));
+
+        fromMat4(eyeView(view, eyeInHead[eye], scale), outView);
+        billboardPoint = dk64vr::billboardViewpoint(view, eyeInHead[0], eyeInHead[1], scale);
+        billboardPointValid = true;
+        const float nearUnits = float(setting("eye_near_m")) * scale;
+        fromMat4(eyeProjection(eyeFov[eye], gameProj, nearUnits), outProj);
+        if (eye == 0) {
+            shownHeading = viewHeading(view);
+        }
+        return true;
     }
 
     plume::RenderFramebuffer *eyeFramebuffer(uint32_t eye, uint32_t *width, uint32_t *height) override {
@@ -2218,6 +2280,125 @@ private:
         return quatYaw(headInOriginQ) + turnShownDelta;  // plus the turn the view shows ahead of the game camera
     }
 
+    // Diagnostic hands (diag_gorilla): row along the floor for four strokes, then a hard push and
+    // a release, over and over. Metres, play space, relative to the head.
+    void diagGorillaHands(dk64vr_hands &h) {
+        if (diagGorillaStartS == 0.0) {
+            diagGorillaStartS = displayS;
+            dk64vr_logpf("[vr-loco]", "diag: synthetic hands for %.0f s", setting("diag_gorilla"));
+        }
+        const double t = displayS - diagGorillaStartS;
+        const double cycle = 1.2;
+        const int stroke = int(t / cycle);
+        const float ph = float(std::fmod(t, cycle) / cycle);
+        const bool jump = (stroke % 5) == 4;
+        float z, y;
+        if (ph < 0.45f) {          // hands on the floor, pulled back: body goes forward
+            const float u = ph / 0.45f;
+            z = -0.45f + 0.6f * u;
+            y = jump ? -0.85f - 0.35f * u : -0.95f;
+        }
+        else if (ph < 0.55f) {     // lift
+            const float u = (ph - 0.45f) / 0.1f;
+            z = 0.15f;
+            y = (jump ? -1.2f : -0.95f) + 0.5f * u;
+        }
+        else if (ph < 0.9f) {      // reach forward in the air
+            const float u = (ph - 0.55f) / 0.35f;
+            z = 0.15f - 0.6f * u;
+            y = -0.45f;
+        }
+        else {                     // put them down
+            const float u = (ph - 0.9f) / 0.1f;
+            z = -0.45f;
+            y = -0.45f - 0.5f * u;
+        }
+        for (int i = 0; i < 2; i++) {
+            h.hand[i][0] = h.head[0] + (i == 0 ? -0.25f : 0.25f);
+            h.hand[i][1] = h.head[1] + y;
+            h.hand[i][2] = h.head[2] + z;
+        }
+        h.valid = 1;
+    }
+
+    void publishHands(const InputSample &s, float dt) {
+        dk64vr_hands h = {};
+        h.seq = uint32_t(frameCount);
+        h.valid = s.valid ? 1 : 0;
+        const Vec3 a = eyeInHead[0].p, b = eyeInHead[1].p;
+        h.head[0] = 0.5f * (a.x + b.x);
+        h.head[1] = 0.5f * (a.y + b.y);
+        h.head[2] = 0.5f * (a.z + b.z);
+        h.head_yaw = quatYaw(headInOriginQ);
+        for (int i = 0; i < 2; i++) {
+            Pose aim;
+            if (input.aimPose(i, aim)) {
+                const Pose rel = poseMul(poseInverse(origin), aim);
+                h.hand[i][0] = rel.p.x;
+                h.hand[i][1] = rel.p.y;
+                h.hand[i][2] = rel.p.z;
+                const Vec3 dir = quatRotate(rel.q, Vec3 { 0.0f, 0.0f, -1.0f });
+                h.hand_dir[i][0] = dir.x;
+                h.hand_dir[i][1] = dir.y;
+                h.hand_dir[i][2] = dir.z;
+            }
+            else {
+                // untracked: hang at the side so it never grabs anything
+                h.hand[i][0] = h.head[0] + (i == 0 ? -0.3f : 0.3f);
+                h.hand[i][1] = h.head[1] - 0.5f;
+                h.hand[i][2] = h.head[2];
+            }
+        }
+        if ((setting("diag_gorilla") > 0.0) && stereoLatched) {
+            if ((diagGorillaStartS == 0.0) || (displayS - diagGorillaStartS < setting("diag_gorilla"))) {
+                diagGorillaHands(h);
+            }
+        }
+        for (int i = 0; i < 2; i++) {
+            const Vec3 now { h.hand[i][0], h.hand[i][1], h.hand[i][2] };
+            if (gorillaHandsSeen && dt > 0.0f) {
+                h.hand_vel[i][0] = (now.x - gorillaLastHand[i].x) / dt;
+                h.hand_vel[i][1] = (now.y - gorillaLastHand[i].y) / dt;
+                h.hand_vel[i][2] = (now.z - gorillaLastHand[i].z) / dt;
+            }
+            gorillaLastHand[i] = now;
+        }
+        gorillaHandsSeen = true;
+        h.grip[0] = s.lBumper ? 1.0f : 0.0f;
+        h.grip[1] = s.rBumper ? 1.0f : 0.0f;
+        h.trigger[0] = s.lTrigger;
+        h.trigger[1] = s.rTrigger;
+        h.buttons = (s.a ? DK64VR_BTN_A : 0) | (s.b ? DK64VR_BTN_B : 0) | (s.x ? DK64VR_BTN_X : 0) | (s.y ? DK64VR_BTN_Y : 0)
+            | (s.lStickClick ? DK64VR_BTN_LSTICK : 0) | (s.rStickClick ? DK64VR_BTN_RSTICK : 0) | (s.menu ? DK64VR_BTN_MENU : 0);
+        h.stick[0][0] = s.lStick[0];
+        h.stick[0][1] = s.lStick[1];
+        h.stick[1][0] = s.rStick[0];
+        h.stick[1][1] = s.rStick[1];
+        h.world_scale = float(setting("gorilla_world_scale"));
+        h.arm_scale = float(setting("arm_scale"));
+        h.jump_multiplier = float(setting("jump_multiplier"));
+        h.max_jump_speed = float(setting("max_jump_speed"));
+        h.gorilla = (setting("gorilla_mode") != 0.0) ? 1 : 0;
+        h.stick_move = (setting("stick_move") != 0.0) ? 1 : 0;
+        dk64vr_publish_hands(&h);
+
+        // contact haptics from the game's last frame
+        dk64vr_body prev, body;
+        dk64vr_get_bodies(&prev, &body);
+        if (body.frame != gorillaBodyFrameSeen) {
+            gorillaBodyFrameSeen = body.frame;
+            for (int i = 0; i < 2; i++) {
+                if (body.haptic[i] > 0) {
+                    sfvr_haptic_submit(&input.haptics, i, float(body.haptic[i]) / 100.0f, 0.03f);
+                }
+            }
+            if (body.active && !gorillaLogged) {
+                gorillaLogged = true;
+                dk64vr_logpf("[vr-loco]", "arm locomotion driving the player (world_scale %.1f, arm_scale %.2f)", h.world_scale, h.arm_scale);
+            }
+        }
+    }
+
     void updateInput(bool renderingNow) {
         const bool live = renderingNow && focused && input.ready() && (synthetic == false);
         InputSample s = input.sample(live, localSpace, frameState.predictedDisplayTime);
@@ -2290,6 +2471,7 @@ private:
         }
 
         lastSample = s;
+        publishHands(s, dt);
         if (r.vrMenuChord) {
             sfvr_haptic_event(&input.haptics, SFVR_HAND_BOTH, SFVR_HAPTIC_UI_CLICK);
             if (vrMenuOpen) {
@@ -3570,6 +3752,15 @@ private:
     bool diagPointerDown = false;
     std::atomic<int> menuPanelDump = -1;
     std::string menuDumpName;
+
+    // Arm locomotion (src/vr/include/dk64vr_gorilla.h).
+    int32_t gorillaLaunchSeen = 0;
+    double gorillaJumpUntilS = 0.0;
+    Vec3 gorillaLastHand[2] = {};
+    bool gorillaHandsSeen = false;
+    uint32_t gorillaBodyFrameSeen = 0;
+    double diagGorillaStartS = 0.0;
+    bool gorillaLogged = false;
 
     bool hudFailed = false;
     bool waitFailed = false, beginFailed = false, endFailed = false, panelFailed = false, acquireFailed = false;
