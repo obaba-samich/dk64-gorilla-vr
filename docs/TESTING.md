@@ -23,7 +23,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | VR off: no OpenXR, no vr.toml, no `[vr]` log lines | ✅ | flat run after all VR patches |
 | `--vr` with no runtime falls back to flat | ✅ | logs `VR mode off` |
 | Clean exit from VR (was a segfault) | ✅ | fixed in RecompFrontend patch |
-| Testing tab: unlock everything | 🧪 | `diag_unlock`: flags and items set, Tag Anywhere then reached all five Kongs |
+| Testing tab: unlock everything | 🧪 | `diag_unlock`: ran with no crash, logged. Not yet checked in the pause menu by eye |
 | Testing tab: warp to all 69 places | 🧪 | `diag_warp_tour`, 2026-11-25: 68 loaded in order with no crash; the tour stops in DK Arcade by design, so Jetpac wasn't reached. A warp waits through cutscenes, pause and arcade games |
 | Testing tab renders | 🧪 | panel dump with `diag_vr_menu_tab = 5` |
 
