@@ -80,3 +80,51 @@ the Gorilla Tag feel. Per-Kong sizes (eye height, radius, arm and launch factors
 support whole-function patches. The VR patches copy the decomp's C for the few functions they
 change (movement step, renderActor) and add calls inside functions the recomp already patches.
 All the game-side VR code sits in patches/vr_*.c, so splitting it into a .nrm later is possible.
+
+### D16. Gestures press the game's own buttons
+Gestures (src/vr/loco/gesture.c) never start moves themselves. They turn hand motion into the N64
+combos the decomp's input tables already listen for (Z in the air = slam, Z held + C-left = gun,
+Z + C-right = orange, Z + C-up = instrument, Z + B = special, B = punch / fire). The game still
+decides whether the Kong owns the move, has ammo, stands on the right pad. The buttons keep
+working the whole time, so every ability has a button fallback.
+
+### D17. Grips belong to the gestures
+With gestures on, the grips are the "hand closed" signal (gun at the hip, orange, instrument,
+climbing) and no longer press C-up / C-down. Those moved to right stick up / down, which was
+unused in first person. With gestures off, the old mapping comes back.
+
+### D18. A control mode per situation
+- Normal play as a Kong: arms.
+- Rambi, Enguarde, minecarts, beetle / car / seal races, Pufftoss and the K. Rool Diddy phase
+  (Rocketbarrel flight in a fixed arena): the third-person VR camera with the stick. Arms can't
+  steer a cart or a rhino in any way that feels right, and these are timed.
+- The game's own first-person views (scope, Kremling Kosh, Big Bug Bash, Peril Path Panic): head
+  aim from the base port, stick on. Locomotion is off there.
+- Tag Barrels: the barrel turns on stick X (states 7 / 0xA / 0xB), so leaning your body left or
+  right turns it, and flinging both hands up presses A. The barrel is entered by jumping into it,
+  which arm throws already do.
+- More than 0.8 s in the air with no hand on anything (Rocketbarrel, Baboon Balloon, the twirl
+  glide): the left stick steers, since the game owns that flight.
+
+### D19. Cutscenes and arcades on a TV in a dark room
+The cinema screen already sat in black (the projection layer only covers the screen). It now has
+a bezel and a dim room of flat quads around it, so it reads as a TV in a box rather than a
+floating rectangle. The quads are submitted under the projection layer and none overlaps the
+picture, so runtimes that sort quads by depth (SteamVR) can't put a wall over it. DK Arcade and
+Jetpac use the same room around the floating panel. `cinema_room` turns it off.
+
+### D20. Slippery floors from the surface id
+Surface 0xC is the game's own slippery floor: it gets the slide sound and keeps a slide going
+(decomp playerStateEnterSlideBrake / playerUpdateSlopeSlidePhysics). Hands slide on it with a
+slip of 0.85 (some grip left, so you can still claw along ice). Other surfaces grip fully.
+
+### D21. Wrist HUD on the off hand
+In arm locomotion the HUD (bananas, coins, health) is drawn as a watch face on the back of the
+non-dominant wrist, 16 cm wide by default, so it never blocks the view and a glance shows it.
+Third person and the cinema keep their own HUD placement.
+
+### D22. No Tag Anywhere yet
+The game's swap (`playerSetKongByActorType`) works on the "current actor" globals and allocates new
+model buffers each time; it has to run inside the player's own update with the right checks
+(Kong freed, on the ground, nothing held, no cutscene). Calling it from the frame hook risks a
+broken actor or a bad save, so it isn't in this pass. Tag Barrels work. FUTURE.md has the plan.
