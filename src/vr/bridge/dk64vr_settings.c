@@ -43,6 +43,10 @@ static const sfvr_setting_key port_keys[] = {
 	{ "stick_move", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Abilities by hand motion (src/vr/loco/gesture.h). Off = buttons only, grips back on C-up/C-down.
 	{ "gestures", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Experimental: flick the left stick left / right to swap to the previous / next freed Kong.
+	{ "tag_anywhere", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// Set once the controls page has been shown on the first arm locomotion run.
+	{ "arms_intro_shown", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// The HUD as a watch on the off hand's wrist in arm locomotion; width in metres.
 	{ "wrist_hud", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	{ "wrist_hud_size", SFVR_SETTING_FLOAT, 0.16, 0.08, 0.4, NULL },

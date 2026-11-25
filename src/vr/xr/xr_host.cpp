@@ -2494,6 +2494,16 @@ private:
                 gorillaLogged = true;
                 dk64vr_logpf("[vr-loco]", "arm locomotion driving the player (world_scale %.1f, arm_scale %.2f)", h.world_scale, h.arm_scale);
             }
+            // The first time arm locomotion takes over, show the controls once (not in diag runs)
+            const bool diagRun = (setting("diag_gorilla") > 0.0) || (setting("diag_autostart") > 0.0);
+            if (body.active && (setting("arms_intro_shown") == 0.0) && !diagRun && !vrMenuOpen && stereoLatched) {
+                openVrMenu(0, "first arm locomotion: controls");
+                if (vrMenuOpen) {
+                    menu::uiAct("tab:1");
+                    dk64vr_settings_set(&settings, "arms_intro_shown", 1.0);
+                    settingsDirty = true;
+                }
+            }
         }
     }
 
