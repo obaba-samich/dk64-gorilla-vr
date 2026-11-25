@@ -1,0 +1,15 @@
+diff --git a/recompui/src/core/ui_context.cpp b/recompui/src/core/ui_context.cpp
+index e99229a..ad2b3a1 100644
+--- a/recompui/src/core/ui_context.cpp
++++ b/recompui/src/core/ui_context.cpp
+@@ -172,7 +172,9 @@ void context_error(recompui::ContextId id, ContextErrorType type) {
+ }
+ 
+ recompui::ContextId create_context_impl(Rml::ElementDocument* document) {
+-    static Rml::ElementDocument dummy_document{""};
++    // Never destroyed: a static ElementDocument would be torn down after RmlUi has shut down
++    // and crash the process on exit.
++    static Rml::ElementDocument &dummy_document = *new Rml::ElementDocument{""};
+     bool add_to_dict = true;
+ 
+     if (document == nullptr) {
