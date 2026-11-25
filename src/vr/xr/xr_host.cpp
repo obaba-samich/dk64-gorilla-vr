@@ -2303,15 +2303,15 @@ private:
             z = 0.15f;
             y = (jump ? -1.2f : -0.95f) + 0.5f * u;
         }
-        else if (ph < 0.9f) {      // reach forward in the air
+        else if (ph < 0.9f) {      // reach forward in the air, up into view
             const float u = (ph - 0.55f) / 0.35f;
-            z = 0.15f - 0.6f * u;
-            y = -0.45f;
+            z = 0.15f - 0.75f * u;
+            y = -0.45f + 0.15f * u;
         }
         else {                     // put them down
             const float u = (ph - 0.9f) / 0.1f;
-            z = -0.45f;
-            y = -0.45f - 0.5f * u;
+            z = -0.6f + 0.15f * u;
+            y = -0.3f - 0.65f * u;
         }
         for (int i = 0; i < 2; i++) {
             h.hand[i][0] = h.head[0] + (i == 0 ? -0.25f : 0.25f);
