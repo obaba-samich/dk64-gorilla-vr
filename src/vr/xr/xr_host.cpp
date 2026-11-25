@@ -1110,6 +1110,9 @@ public:
                 cinemaHudSize[0] = screenWidth;
                 cinemaHudSize[1] = (frameUp - frameDown) * unitsPerTan;
             }
+            cinemaRoomShown = cinemaShown && (setting("cinema_room") != 0.0);
+            cinemaRoomSize[0] = screenWidth;
+            cinemaRoomSize[1] = screenHeight;
 
             if (stereoShown) {
                 frozenViews[0] = views[0];
@@ -1119,6 +1122,18 @@ public:
             else if (frozenShown) {
                 views[0] = frozenViews[0];
                 views[1] = frozenViews[1];
+            }
+
+            // Cutscenes: a dark room with the picture on a TV in the front wall. Submitted under
+            // the projection layer, and no quad overlaps the screen, so a runtime that sorts quads
+            // by depth can't put a wall over the picture either.
+            std::vector<XrCompositionLayerQuad> &roomQuads = roomQuadStorage;
+            roomQuads.clear();
+            if (cinemaRoomShown && uiReady) {
+                addCinemaRoom(roomQuads);
+                for (const XrCompositionLayerQuad &q : roomQuads) {
+                    layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&q));
+                }
             }
 
             projection.space = localSpace;
@@ -3146,7 +3161,7 @@ private:
     // The static UI image (one 128x64 sRGB image, filled once; lesson 38): the pointer's dot
     // (x 0-63), the beam's cross-section (x 64-95) and black (x 96-127) in FadeLevels bands of 4
     // rows, alpha 0 to 1 (the snap blink, the transition fade and the pause dim).
-    static const uint32_t UiWidth = 128, UiHeight = 64;
+    static const uint32_t UiWidth = 192, UiHeight = 64;
     static const int FadeLevels = 16;
 
     void createUiImage() {
@@ -3272,6 +3287,67 @@ private:
         quad.pose = toXr(pose);
         quad.size = { sizeX, sizeY };
         return quad;
+    }
+
+    // One flat colour from the UI image's room bands: 0 bezel, 1 wall, 2 floor, 3 ceiling.
+    XrCompositionLayerQuad roomQuad(const Pose &pose, int band, float sizeX, float sizeY) const {
+        XrCompositionLayerQuad quad = { XR_TYPE_COMPOSITION_LAYER_QUAD };
+        quad.layerFlags = 0;
+        quad.space = localSpace;
+        quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+        quad.subImage.swapchain = uiChain.handle;
+        quad.subImage.imageRect.offset = { 144, band * 16 + 6 };
+        quad.subImage.imageRect.extent = { 32, 4 };
+        quad.pose = toXr(pose);
+        quad.size = { std::max(0.01f, sizeX), std::max(0.01f, sizeY) };
+        return quad;
+    }
+
+    void addCinemaRoom(std::vector<XrCompositionLayerQuad> &quads) const {
+        const float w = cinemaRoomSize[0], h = cinemaRoomSize[1];
+        const float d = float(setting("cinema_distance"));
+        const float bezel = 0.06f * w;
+        const float halfRoom = std::max(4.0f, 0.5f * w + bezel + 1.5f);
+        const float floorY = -1.5f, ceilY = std::max(1.5f, 0.5f * h + bezel + 0.5f);
+        const float back = d + 3.0f;
+        // a pose in the screen's frame (x right, y up, +z towards the viewer) to local space
+        auto at = [&](float x, float y, float z, const Quat &q) {
+            Pose p;
+            const Vec3 o = quatRotate(cinemaScreen.q, Vec3 { x, y, z });
+            p.p = { cinemaScreen.p.x + o.x, cinemaScreen.p.y + o.y, cinemaScreen.p.z + o.z };
+            p.q = quatMul(cinemaScreen.q, q);
+            return p;
+        };
+        const Quat flat;
+        const float s45 = 0.70710678f;
+        const Quat faceRight = { 0.0f, s45, 0.0f, s45 };    // normal +x (left wall)
+        const Quat faceLeft = { 0.0f, -s45, 0.0f, s45 };    // normal -x (right wall)
+        const Quat faceUp = { -s45, 0.0f, 0.0f, s45 };      // normal +y (floor)
+        const Quat faceDown = { s45, 0.0f, 0.0f, s45 };     // normal -y (ceiling)
+        const Quat faceBack = { 0.0f, 1.0f, 0.0f, 0.0f };   // normal -z (back wall)
+
+        // TV bezel: four strips around the picture, a little behind it
+        const float bz = -0.01f;
+        quads.push_back(roomQuad(at(0.0f, 0.5f * h + 0.5f * bezel, bz, flat), 0, w + 2.0f * bezel, bezel));
+        quads.push_back(roomQuad(at(0.0f, -0.5f * h - 0.5f * bezel, bz, flat), 0, w + 2.0f * bezel, bezel));
+        quads.push_back(roomQuad(at(-0.5f * w - 0.5f * bezel, 0.0f, bz, flat), 0, bezel, h));
+        quads.push_back(roomQuad(at(0.5f * w + 0.5f * bezel, 0.0f, bz, flat), 0, bezel, h));
+
+        // front wall around the TV
+        const float wz = -0.05f;
+        const float ox = 0.5f * w + bezel, oy = 0.5f * h + bezel;
+        quads.push_back(roomQuad(at(0.0f, 0.5f * (oy + ceilY), wz, flat), 1, 2.0f * halfRoom, ceilY - oy));
+        quads.push_back(roomQuad(at(0.0f, 0.5f * (floorY - oy), wz, flat), 1, 2.0f * halfRoom, -oy - floorY));
+        quads.push_back(roomQuad(at(-0.5f * (halfRoom + ox), 0.0f, wz, flat), 1, halfRoom - ox, 2.0f * oy));
+        quads.push_back(roomQuad(at(0.5f * (halfRoom + ox), 0.0f, wz, flat), 1, halfRoom - ox, 2.0f * oy));
+
+        // side walls, back wall, floor and ceiling
+        const float midZ = 0.5f * (wz + back), depth = back - wz, height = ceilY - floorY, midY = 0.5f * (ceilY + floorY);
+        quads.push_back(roomQuad(at(-halfRoom, midY, midZ, faceRight), 1, depth, height));
+        quads.push_back(roomQuad(at(halfRoom, midY, midZ, faceLeft), 1, depth, height));
+        quads.push_back(roomQuad(at(0.0f, midY, back, faceBack), 1, 2.0f * halfRoom, height));
+        quads.push_back(roomQuad(at(0.0f, floorY, midZ, faceUp), 2, 2.0f * halfRoom, depth));
+        quads.push_back(roomQuad(at(0.0f, ceilY, midZ, faceDown), 3, 2.0f * halfRoom, depth));
     }
 
     // The pointer, composited above everything (standard.md section 3, lessons 80 and 83): the
@@ -3568,6 +3644,9 @@ private:
     std::atomic<bool> layersLogDue = false;
     bool uiReady = false;
     std::vector<XrCompositionLayerQuad> extraQuadStorage;
+    std::vector<XrCompositionLayerQuad> roomQuadStorage;
+    bool cinemaRoomShown = false;
+    float cinemaRoomSize[2] = { 3.6f, 2.0f };
     std::mutex panelMutex;
     std::atomic<bool> panelReady = false;
     std::atomic<bool> panelWanted = true;

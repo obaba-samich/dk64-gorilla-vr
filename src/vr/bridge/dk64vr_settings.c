@@ -88,6 +88,8 @@ static const sfvr_setting_key port_keys[] = {
 	{ "cutscenes", SFVR_SETTING_ENUM, 0.0, 0.0, 2.0, cutscene_values },
 	{ "cinema_distance", SFVR_SETTING_FLOAT, 3.0, 1.5, 10.0, NULL },
 	{ "cinema_width", SFVR_SETTING_FLOAT, 3.6, 1.0, 10.0, NULL },
+	// Cutscenes play on a TV in a dark room instead of floating in black.
+	{ "cinema_room", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	// Stereo depth of the cinema: on-screen separation of a point at infinity as a fraction of
 	// the eye distance. The scene sits behind the screen plane (lesson 82). 0 = flat.
 	{ "cinema_depth", SFVR_SETTING_FLOAT, 0.6, 0.0, 1.0, NULL },
