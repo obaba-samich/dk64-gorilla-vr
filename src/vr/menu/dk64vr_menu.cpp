@@ -141,7 +141,7 @@ namespace {
 
 enum class Kind { Seg, Toggle, Slider, Stepper, Height, Info, Action, Map };
 enum class Fmt { None, Pct, PctFlat, Metres, DegPerSec, Blink, Times1, Times2, Percent0, Offset, PctOff, Degrees2 };
-enum class When { Always, TurnOn, TurnSnap, TurnSmooth, Vignette, Hud, Cinema, FovOn, ResManual, Roomscale };
+enum class When { Always, TurnOn, TurnSnap, TurnSmooth, Vignette, Hud, Cinema, FovOn, ResManual, Roomscale, ManualScale };
 enum class Virt { None, MoveRef, ResAuto };
 
 struct Opt {
@@ -213,8 +213,10 @@ std::vector<Row> buildRows() {
           "Choose the defaults used by Reset. Saved choices stay as they are.", W::Always, false, Virt::None, nullptr },
         { "gorilla_mode", "gorilla_mode", C, "Arm locomotion", K::Toggle, {}, 0, 0, 0, F::None,
           "First person, moving with your arms. Off: the third-person VR camera and the stick.", W::Always, false, Virt::None, nullptr },
+        { "match_height", "match_height", C, "Your size = the Kong's", K::Toggle, {}, 0, 0, 0, F::None,
+          "The game's floor is your real floor and the world is sized so your eyes are at the Kong's eye height, as in Gorilla Tag. Off: Kong size below.", W::Always, false, Virt::None, nullptr },
         { "gorilla_world_scale", "gorilla_world_scale", C, "Kong size", K::Slider, {}, 8, 60, 1, F::None,
-          "Game units per metre in first person. Higher makes you smaller and the world bigger.", W::Always, false, Virt::None, nullptr },
+          "Game units per metre, with the size matching off. Higher makes the world bigger and you faster through it.", W::ManualScale, false, Virt::None, nullptr },
         { "arm_scale", "arm_scale", C, "Arm length", K::Slider, {}, 0.5, 2, 0.05, F::Times2,
           "Your real reach times this. Above 1 gives long gorilla arms.", W::Always, false, Virt::None, nullptr },
         { "jump_multiplier", "jump_multiplier", C, "Throw strength", K::Slider, {}, 0.5, 3, 0.05, F::Times2,
@@ -429,6 +431,7 @@ bool Model::rowEnabled(const Row &r) const {
         case When::FovOn: return int(g("foveation")) != 0;
         case When::ResManual: return g("resolution_scale") != DK64VR_RESOLUTION_AUTO;
         case When::Roomscale: return g("roomscale") != 0.0;
+        case When::ManualScale: return g("match_height") == 0.0;
         default: return true;
     }
 }
