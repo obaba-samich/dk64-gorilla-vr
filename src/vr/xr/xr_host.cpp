@@ -560,6 +560,15 @@ public:
         if (scheduler.arrive(at, tick) && ((scheduler.rebases == 1) || (std::fabs(tickBefore - scheduler.tick_s) > 1e-9) || (setting("timing") != 0.0))) {
             dk64vr_logf("scheduler: anchored at %.1f Hz (rebase %" PRIu64 ", offset %.1f ms)", 1.0 / scheduler.tick_s, scheduler.rebases, scheduler.last_offset_s * 1000.0);
         }
+        // The first-person camera blends the same pair of game frames as this workload: the
+        // game publishes a frame's body before its workload arrives. Read fresh at display time
+        // instead, a new body met the old weight (near 1) and the view jumped ahead, then back
+        // when the weight restarted: a stutter every frame while moving.
+        {
+            std::scoped_lock lock(camBodyMutex);
+            dk64vr_get_bodies(&camBodyPrev, &camBodyLast);
+            camBodyValid = true;
+        }
 
         // The camera smoothing's history: every game frame's own camera (docs 5c). A scene
         // change, a mode change or a jump in the camera resets it (no swoop across a cut).
@@ -774,7 +783,14 @@ public:
 
     bool firstPersonView(uint32_t eye, const Mat4 &gameProj, float outView[16], float outProj[16]) {
         dk64vr_body prev, body;
-        dk64vr_get_bodies(&prev, &body);
+        {
+            std::scoped_lock lock(camBodyMutex);
+            if (!camBodyValid) {
+                dk64vr_get_bodies(&camBodyPrev, &camBodyLast);
+            }
+            prev = camBodyPrev;
+            body = camBodyLast;
+        }
         const dk64vr_game_state state = gameState();
         const bool pov = (body.mode == DK64VR_BODY_POV) && (state.scene == DK64VR_SCENE_CUTSCENE) && !cinemaActive;
         if (!pov && (!body.active || ((state.scene != DK64VR_SCENE_GAMEPLAY) && (state.scene != DK64VR_SCENE_FIRST_PERSON)))) {
@@ -2593,7 +2609,9 @@ private:
             // Immersive cutscenes: a right stick click switches between the game's camera and
             // the Kong's eyes. The choice lasts until the cutscene is over.
             const int32_t scene = gameState().scene;
-            if ((scene != DK64VR_SCENE_CUTSCENE) && (scene != DK64VR_SCENE_TRANSITION) && (scene != DK64VR_SCENE_PAUSE)) {
+            // one cutscene's choice: a transition ends it (leaving Cranky's, the choice made in
+            // the shop carried into the barrel exit outside, seen from inside the barrel)
+            if ((scene != DK64VR_SCENE_CUTSCENE) && (scene != DK64VR_SCENE_PAUSE)) {
                 povChoice = -1;
             }
             const bool click = s.valid && s.rStickClick;
@@ -3924,6 +3942,9 @@ private:
     XrSpace viewSpace = XR_NULL_HANDLE;
     XrSpace stageSpace = XR_NULL_HANDLE;  // the room's floor, where the runtime has one
     bool floorTracked = false;
+    std::mutex camBodyMutex;              // the body pair of the newest workload (camera blend)
+    dk64vr_body camBodyPrev = {}, camBodyLast = {};
+    bool camBodyValid = false;
     int32_t povChoice = -1;               // this cutscene's view: -1 default, 0 third, 1 first
     bool povClickHeld = false;
     float floorLocalY = 0.0f;             // the floor's height in LOCAL space, metres
