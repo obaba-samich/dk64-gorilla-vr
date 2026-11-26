@@ -34,7 +34,9 @@ static const sfvr_setting_key port_keys[] = {
 	// Game units per metre in first person. Bigger than world_scale on purpose: DK's eyes end up
 	// about 0.8 m off the floor, so you feel small and reach the ground without kneeling.
 	{ "gorilla_world_scale", SFVR_SETTING_FLOAT, 26.0, 8.0, 60.0, NULL },
-	{ "match_height", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Off (Gorilla Tag): your eyes at the Kong's eye height, hands hold you up. On: the real
+	// floor is the game's floor and the world is sized to your height.
+	{ "match_height", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Immersive cutscenes: the shops' start in first person (right stick click switches any
 	// cutscene between first and third person).
 	{ "cutscene_pov", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },

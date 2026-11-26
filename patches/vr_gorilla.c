@@ -468,10 +468,9 @@ static void vr_setup_params(Actor *player) {
     gtl_default_params(&vr_params);
     vr_params.body_radius = kb->radius * scale;
     vr_params.hand_radius = 1.2f * scale;
-    {
-        // As in Gorilla Tag the game's floor is the real floor: your eyes are as far above the
-        // Kong's feet as they are above your own. By default the world is sized so that's the
-        // Kong's own eye height (you're the Kong's size); otherwise world_scale fixes it.
+    if (vr_hands.match_height) {
+        // Optional: the game's floor at your real floor, the world sized so your eyes are at the
+        // Kong's eye height.
         f32 standing = -vr_hands.floor_y;   // eyes above the floor at the recentre, metres
         if (!(standing > 0.8f)) {
             standing = 0.8f;
@@ -479,11 +478,17 @@ static void vr_setup_params(Actor *player) {
         if (standing > 2.3f) {
             standing = 2.3f;
         }
-        vr_ws = vr_hands.match_height ? (kb->height * scale / standing) : vr_hands.world_scale;
-        if (!(vr_ws > 1.0f)) {
-            vr_ws = 1.0f;
-        }
+        vr_ws = kb->height * scale / standing;
         vr_height = standing * vr_ws;
+    } else {
+        // Gorilla Tag (the default): your eyes are at the Kong's eye height over its feet. With
+        // nothing held you drop until the Kong stands on the ground; hands on the ground hold you
+        // up, and pushing down lifts you. The real floor doesn't matter.
+        vr_ws = vr_hands.world_scale;
+        vr_height = kb->height * scale;
+    }
+    if (!(vr_ws > 1.0f)) {
+        vr_ws = 1.0f;
     }
     vr_params.head_height = vr_height - vr_params.body_radius;
     // GorillaLocomotion's own numbers (its Gorilla Rig prefab): 1.5 m of arm, 0.4 m/s before a
@@ -1051,9 +1056,10 @@ void vr_gorilla_pre_frame(void) {
         vr_hang_frames = 0;
     }
     if ((vr_frame % 60) == 0) {
-        recomp_printf("[vr-loco] at %.1f %.1f %.1f state %d vy %.2f holding %d%d\n", player->x_position,
-            player->y_position, player->z_position, player->control_state, player->y_velocity,
-            vr_loco.hand[0].touching, vr_loco.hand[1].touching);
+        recomp_printf("[vr-loco] at %.1f %.1f %.1f state %d vy %.2f holding %d%d | floor %.2f m, head %.2f, hands %.2f %.2f m, scale %.1f\n",
+            player->x_position, player->y_position, player->z_position, player->control_state, player->y_velocity,
+            vr_loco.hand[0].touching, vr_loco.hand[1].touching, vr_hands.floor_y, vr_hands.head[1], vr_hands.hand[0][1],
+            vr_hands.hand[1][1], vr_ws);
     }
     {
         s32 h;
@@ -1088,7 +1094,7 @@ void vr_gorilla_post_frame(void) {
         vr_yaw = vr_pov_yaw;   // the head offset turns with the view the host builds from it
         off = vr_play_to_world(vr_hands.head, vr_ws);
         vr_body.head[0] = player->x_position - off.x;
-        vr_body.head[1] = player->y_position + vr_height - off.y;
+        vr_body.head[1] = player->y_position + vr_height;   // the head's height stays inside the body: the host adds it live
         vr_body.head[2] = player->z_position - off.z;
         vr_body.yaw = vr_pov_yaw;
         vr_body.world_scale = vr_ws;
@@ -1119,7 +1125,7 @@ void vr_gorilla_post_frame(void) {
         {
             gtl_vec3 off = vr_play_to_world(vr_hands.head, vr_ws);
             vr_body.head[0] = player->x_position - off.x;
-            vr_body.head[1] = player->y_position + vr_height - off.y;
+            vr_body.head[1] = player->y_position + vr_height;   // the head's height stays inside the body: the host adds it live
             vr_body.head[2] = player->z_position - off.z;
         }
         vr_body.yaw = vr_yaw;
