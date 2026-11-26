@@ -1,0 +1,34 @@
+name: Check and Close Malicious Issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  moderate-issue:
+    runs-on: ubuntu-latest
+    if: github.event.issue.title == '✅[FIX & INSTALL] Donkey Kong 64 Recompiled' || contains(github.event.issue.body, 'https://github.com/SheenQuality/Universal-Fix-Install')
+    steps:
+      - name: Close issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['Malicious Issue']
+            });
+            
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              state: 'closed',
+              state_reason: 'not_planned'
+            });
