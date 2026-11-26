@@ -11,7 +11,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 |---|---|---|
 | Locomotion core: 27 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
 | Gestures: 24 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
-| VR host bridge tests (from astromaddie/dk64-vr) | `tools/test.sh` | ✅ |
+| VR host bridge tests (from astromaddie/dk64-vr), plus the arm-mode stick routing (turn and C-up / C-down on the left stick while the right one does abilities) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
 
 ## Build and run
@@ -80,16 +80,16 @@ gun draw / holster (Z+C-left), orange (Z+C-right), with snap turns and Kong swap
 |---|---|---|---|---|
 | Simian Slam | both hands down hard in the air | ✅ | ⬜ | ⬜ |
 | Punch | fast jab | ✅ | 🧪 | ⬜ |
-| Kong special (Chimpy Charge, Primate Punch, Orangstand...) | double jab, or left stick right | ✅ | 🧪 | ⬜ |
-| Guns (all five) | dominant hand grip at hip, or left stick up; trigger fires | ✅ | 🧪 draw (gesture and stick) | ⬜ |
-| Oranges | off hand grip at hip, throw, release; or left stick down | ✅ | 🧪 | ⬜ |
-| Instruments (all five) | both hands up front, both grips; or left stick left | ✅ | 🧪 stick: the game plays it (state 103) | ⬜ |
+| Kong special (Chimpy Charge, Primate Punch, Orangstand...) | double jab, or right stick right | ✅ | 🧪 | ⬜ |
+| Guns (all five) | dominant hand grip at hip, or right stick up; trigger fires | ✅ | 🧪 draw (gesture and stick) | ⬜ |
+| Oranges | off hand grip at hip, throw, release; or right stick down | ✅ | 🧪 | ⬜ |
+| Instruments (all five) | both hands up front, both grips; or right stick left | ✅ | 🧪 stick: the game plays it (state 103) | ⬜ |
 | Vines, ladders, trees | grip overhead, pull | ✅ | ⬜ | ⬜ |
 | Pony Tail Twirl | arms out wide in the air | ✅ | ⬜ | ⬜ |
 | Crouch, pads (Baboon Blast, Spring, Balloon, Monkeyport...) | duck = Z | ✅ | ⬜ | ⬜ |
 | Rocketbarrel, Baboon Balloon flight | left stick after 0.8 s in the air | — | ⬜ | ⬜ |
 | Tag Barrels | jump in, lean to turn, fling up = A | — | ⬜ | ⬜ |
-| Tag Anywhere (experimental, off by default) | left stick flick | — | 🧪 12 forced swaps through all five Kongs, clean exit | ⬜ |
+| Tag Anywhere (experimental, off by default) | right stick flick left / right | — | 🧪 12 forced swaps through all five Kongs, clean exit | ⬜ |
 
 ## Playthrough
 

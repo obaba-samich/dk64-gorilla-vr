@@ -220,3 +220,11 @@ Z + B), work with ability gestures off, and are off while the stick moves you (`
 steers a long fall or climbs. With Tag Anywhere on, left / right stay its Kong swap. Punches,
 the slam, the twirl and ducking stay gestures. `diag_stick_actions` flicks through all four for
 the simulator.
+
+### D33. The ability flicks are on the right stick
+Asked for after D32. In arm locomotion, while the flicks are on (not `stick_move`, not climbing
+or steering a long fall), the right stick does them: up = gun, down = orange, left = instrument,
+right = Kong special (Tag Anywhere's swap when that's on). Turning and C-up / C-down move to the
+left stick, which moves nothing in arm mode. Everywhere else (third person, barrels, climbing,
+long falls, `stick_move`) the right stick turns as before and the left stick moves. The host and
+the game use the same condition (body active, arm mode, stick not free, `stick_move` off).
