@@ -1066,6 +1066,44 @@ static void testStickRelativeToView() {
     CHECK_NEAR(y, 1.0, 1e-5);
 }
 
+// Arm locomotion's right-stick abilities: turning and C-up / C-down move to the left stick, which
+// moves nothing then, and the right stick sends nothing to the N64 pad.
+static void testStickActionsOnRight() {
+    InputMapper m;
+    InputConfig config;
+    InputContext context;
+    context.stereoPlay = true;
+    context.gesturesOwnGrips = true;
+    context.stickActionsOnRight = true;
+    InputSample s = sampleIdle();
+    double t = 1.0;
+    s.lStick[0] = 0.9f;
+    InputResult r = m.update(s, config, context, t += 0.014, 0.014f);
+    CHECK_NEAR(r.turnDeg, 45.0, 1e-5);
+    CHECK(r.stickX == 0.0f && r.stickY == 0.0f);
+    s.lStick[0] = 0.0f;
+    s.lStick[1] = 0.9f;
+    r = m.update(s, config, context, t += 0.014, 0.014f);
+    CHECK((r.buttons & n64::CUp) != 0 && r.stickY == 0.0f);
+    s = sampleIdle();
+    s.rStick[0] = 0.9f;
+    r = m.update(s, config, context, t += 0.014, 0.014f);
+    CHECK(r.turnDeg == 0.0f && r.buttons == 0);
+    s.rStick[0] = 0.0f;
+    s.rStick[1] = -0.9f;
+    r = m.update(s, config, context, t += 0.014, 0.014f);
+    CHECK(r.buttons == 0);
+    // off again (climbing, a long fall, stick_move): the right stick turns, the left one moves
+    context.stickActionsOnRight = false;
+    s = sampleIdle();
+    m.update(s, config, context, t += 0.014, 0.014f);
+    s.rStick[0] = 0.9f;
+    s.lStick[1] = 0.9f;
+    r = m.update(s, config, context, t += 0.014, 0.014f);
+    CHECK_NEAR(r.turnDeg, 45.0, 1e-5);
+    CHECK(r.stickY > 0.5f && (r.buttons & n64::CUp) == 0);
+}
+
 static void testTurnAndView() {
     InputMapper m;
     InputConfig config;
@@ -2813,6 +2851,7 @@ int main() {
     testN64Map();
     testStickRelativeToView();
     testTurnAndView();
+    testStickActionsOnRight();
     testLiveAdjustment();
     testMenuNavigation();
     testMerge();

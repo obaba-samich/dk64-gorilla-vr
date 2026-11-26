@@ -367,7 +367,7 @@ InputResult InputMapper::update(const InputSample &raw, const InputConfig &confi
     b |= s.y ? n64::CLeft : 0;
     b |= s.b ? n64::CRight : 0;
     if (context.gesturesOwnGrips) {
-        const float ry = clamp1(s.rStick[1]);
+        const float ry = clamp1(context.stickActionsOnRight ? s.lStick[1] : s.rStick[1]);
         b |= (ry > 0.6f) ? n64::CUp : 0;
         b |= (ry < -0.6f) ? n64::CDown : 0;
     }
@@ -401,8 +401,13 @@ InputResult InputMapper::update(const InputSample &raw, const InputConfig &confi
         }
     }
 
-    // Right stick X: a comfort turn, or the game's own C-left/C-right camera swing.
-    const float rx = clamp1(s.rStick[0]);
+    if (context.stickActionsOnRight) {
+        x = y = 0.0f;  // the left stick turns and does C-up / C-down instead
+    }
+
+    // Right stick X (the left stick's while the right one does abilities): a comfort turn, or the
+    // game's own C-left/C-right camera swing.
+    const float rx = clamp1(context.stickActionsOnRight ? s.lStick[0] : s.rStick[0]);
     if (config.rightStickX == RightStickX::GameCamera) {
         b |= (rx < -0.5f) ? n64::CLeft : 0;
         b |= (rx > 0.5f) ? n64::CRight : 0;

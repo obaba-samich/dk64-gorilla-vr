@@ -130,6 +130,9 @@ struct InputContext {
                              // game camera's heading, counter-clockwise from above positive
     bool gesturesOwnGrips = false; // arm locomotion with gestures: the grips are for gestures, and
                                    // C-up / C-down move to the right stick's up / down
+    bool stickActionsOnRight = false; // arm locomotion: right-stick flicks are abilities (the game
+                                      // reads them), so turning and C-up / C-down move to the
+                                      // left stick, which moves nothing then
 };
 
 struct InputResult {
