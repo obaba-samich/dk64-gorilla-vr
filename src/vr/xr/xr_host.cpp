@@ -1703,6 +1703,7 @@ private:
                 recentrePending = true;
                 dk64vr_logf("recentre: the runtime's reference space changed");
                 floorTracked = false;  // LOCAL moved: find the floor again (standing height until then)
+                headMaxValid = false;
                 break;
             case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
                 dk64vr_logpf("[openxr]", "instance loss pending");
@@ -1845,6 +1846,14 @@ private:
         const bool viewsValid = (count == 2) && ((viewState.viewStateFlags & needed) == needed);
         const bool headValid = (head.locationFlags & (XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT)) == (XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT);
         runtimeEyesValid = XR_SUCCEEDED(viewResult) && viewsValid && headValid;
+        if (headValid && !synthetic) {
+            // the highest the head has been since tracking last reset: standing height, for when
+            // the runtime gives no usable floor (a reset can happen while you're bent down)
+            if (!headMaxValid || (head.pose.position.y > headMaxLocalY)) {
+                headMaxLocalY = head.pose.position.y;
+                headMaxValid = true;
+            }
+        }
         if (headValid && (stageSpace != XR_NULL_HANDLE)) {
             XrSpaceLocation onStage = { XR_TYPE_SPACE_LOCATION };
             if (XR_SUCCEEDED(xrLocateSpace(viewSpace, stageSpace, frameState.predictedDisplayTime, &onStage))
@@ -2435,9 +2444,14 @@ private:
             y = -0.3f - 0.65f * u;
         }
         // the strokes were written for a floor 0.81 m under the eyes; move them to the real one
-        const float floorRel = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y - h.head[1])
-                                                                          : (-float(setting("standing_eye_height")) - h.head[1]);
-        y += floorRel + 0.81f;
+        // where the game's ground is under the eyes: the real floor (match_height), or DK's eye
+        // height (21 units) at the Kong size
+        float floorRel = -21.0f / float(setting("gorilla_world_scale")) - h.head[1];
+        if (setting("match_height") != 0.0) {
+            floorRel = ((floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y)
+                                                                     : -float(setting("standing_eye_height"))) + 0.05f - h.head[1];
+        }
+        y += floorRel + 0.95f;   // the stroke's low point (-0.95) lands on the ground, no deeper
         for (int i = 0; i < 2; i++) {
             h.hand[i][0] = h.head[0] + (i == 0 ? -0.25f : 0.25f);
             h.hand[i][1] = h.head[1] + y;
@@ -2594,8 +2608,27 @@ private:
         }
         // the real floor in the play space (origin = the head at the last recentre); without a
         // tracked floor, or seated, assume the recentre happened standing
-        h.floor_y = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y)
-                                                                 : -float(setting("standing_eye_height"));
+        {
+            // The game's floor goes 5 cm above the real one, so hands find it before the
+            // controllers hit the real floor. Without a tracked floor: standing_eye_height under
+            // the highest the head has been (not under wherever it was at the last recentre).
+            float floorLocal;
+            if (floorTracked && (setting("seated") == 0.0)) {
+                floorLocal = floorLocalY;
+            }
+            else if (headMaxValid && (setting("seated") == 0.0)) {
+                floorLocal = headMaxLocalY - float(setting("standing_eye_height"));
+            }
+            else {
+                floorLocal = origin.p.y - float(setting("standing_eye_height"));
+            }
+            h.floor_y = floorLocal + 0.05f - origin.p.y;
+            if (std::fabs(h.floor_y - floorPublishedLogged) > 0.05f) {
+                floorPublishedLogged = h.floor_y;
+                dk64vr_logf("floor: %.2f m under the play origin (%s)", -h.floor_y,
+                    floorTracked ? "tracked" : (headMaxValid ? "standing height" : "assumed"));
+            }
+        }
         h.arm_scale = float(setting("arm_scale"));
         h.jump_multiplier = float(setting("jump_multiplier"));
         h.max_jump_speed = float(setting("max_jump_speed"));
@@ -3895,6 +3928,9 @@ private:
     bool povClickHeld = false;
     float floorLocalY = 0.0f;             // the floor's height in LOCAL space, metres
     float floorLoggedY = 0.0f;
+    bool headMaxValid = false;
+    float floorPublishedLogged = 0.0f;
+    float headMaxLocalY = 0.0f;           // highest head since the last reset, LOCAL space
     std::atomic<bool> sessionRunning = false;
     bool sessionFailed = false;
     std::atomic<bool> exitRequested = false;
