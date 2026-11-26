@@ -2516,6 +2516,20 @@ private:
         h.stick[0][1] = s.lStick[1];
         h.stick[1][0] = s.rStick[0];
         h.stick[1][1] = s.rStick[1];
+        if ((setting("diag_stick_actions") > 0.0) && (diagGorillaStartS != 0.0)) {
+            // diagnostics: after the rowing, flick the left stick up, down, left, right, one
+            // every diag_stick_actions seconds, held 0.3 s (gun, orange, instrument, special)
+            const double t = displayS - diagGorillaStartS - setting("diag_gorilla");
+            const double every = setting("diag_stick_actions");
+            if (t > 0.0) {
+                static const float dirs[4][2] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
+                const int n = int(t / every);
+                if (std::fmod(t, every) < 0.3) {
+                    h.stick[0][0] = dirs[n % 4][0];
+                    h.stick[0][1] = dirs[n % 4][1];
+                }
+            }
+        }
         h.world_scale = float(setting("gorilla_world_scale"));
         h.arm_scale = float(setting("arm_scale"));
         h.jump_multiplier = float(setting("jump_multiplier"));

@@ -500,10 +500,6 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     vr_gst_out.events = 0;
     vr_gst_out.stick_valid = 0;
     vr_gst_out.aim_valid = 0;
-    if (!vr_hands.gestures) {
-        gst_reset(&vr_gst);
-        return;
-    }
     gst_default_params(&vr_gst_params);
     vr_gst_params.dominant = vr_hands.dominant;
     vr_gst_params.crouch_by_ducking = vr_hands.duck_crouch;
@@ -523,6 +519,14 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     g.airborne = !(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching;
     g.in_water = vr_in_water || (VR_ACTOR_CONTACT(player) & 2) != 0;
     g.gun_out = vr_gun_drawn(player);
+    // gestures off still leaves the stick actions
+    g.no_motion = !vr_hands.gestures;
+    // left-stick flicks: gun, orange, instrument, Kong special. Not while the stick moves you
+    // (stick_move), steers a long fall or climbs.
+    g.stick[0] = vr_hands.stick[0][0];
+    g.stick[1] = vr_hands.stick[0][1];
+    g.stick_actions = !vr_hands.stick_move && vr_body_mode == VR_BODY_ARMS && vr_air_frames <= 24;
+    g.stick_swaps_kong = vr_hands.tag_anywhere;
     g.dt = dt;
     gst_step_frame(&vr_gst, &vr_gst_params, &g, &vr_gst_out);
     if (vr_body_mode != VR_BODY_CLIMB) {
@@ -532,7 +536,8 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     }
     if (vr_gst_out.events & ~(GST_EV_CROUCH | GST_EV_CLIMB | GST_EV_TWIRL)) {
         vr_tag_buzz = 1;  // a short buzz on both hands: the gesture registered
-        recomp_printf("[vr-gesture] events %x hold %x\n", vr_gst_out.events, vr_gst_out.hold);
+        recomp_printf("[vr-gesture] events %x hold %x (stick %.1f %.1f, gun %d)\n", vr_gst_out.events, vr_gst_out.hold,
+            vr_hands.stick[0][0], vr_hands.stick[0][1], g.gun_out);
     }
 }
 

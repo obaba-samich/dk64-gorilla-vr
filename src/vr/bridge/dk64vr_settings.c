@@ -59,6 +59,7 @@ static const sfvr_setting_key port_keys[] = {
 	{ "diag_gestures", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: every this many seconds of arm locomotion, swap to the next Kong (freed or not).
 	{ "diag_tag_anywhere", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	{ "diag_stick_actions", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: unlock everything (the Testing tab's button) once arm locomotion starts.
 	{ "diag_unlock", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Diagnostic: every this many seconds of play, warp to the next place on the Testing tab's
