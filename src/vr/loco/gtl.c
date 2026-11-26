@@ -170,9 +170,13 @@ static int still_stuck(const gtl_world *w, const gtl_params *p, const gtl_hand *
 /* Where the controller says the hand is, in world space, held to arm's reach. */
 static gtl_vec3 hand_target(const gtl_world *w, const gtl_params *p, const gtl_state *s,
                             const gtl_input *in, int h) {
+    /* The head is where the tracked head is: head_height over the body at the play space's
+     * origin height, plus how far the head has moved up or down from there (crouching, leaning
+     * down). The body never follows the head up and down (see step 1), so crouching brings the
+     * hands closer to the ground, as in Gorilla Tag. */
     gtl_vec3 rel = vsub(in->hand[h], in->head);
     rel = vclamp_len(w, rel, p->arm_length);
-    return vadd(vadd(s->body, v3(0.0f, p->head_height, 0.0f)), rel);
+    return vadd(vadd(s->body, v3(0.0f, p->head_height + in->head.y, 0.0f)), rel);
 }
 
 void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in) {
@@ -305,6 +309,9 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
 
     /* 1. room-scale head movement */
     head_delta = vsub(in->head, s->last_head);
+    /* only walking around the room moves the body; the head's ups and downs stay inside it
+     * (they used to lift the body off the floor for the game to drop it again: jitter) */
+    head_delta.y = 0.0f;
     s->last_head = in->head;
     s->body = slide(w, p, s->body, head_delta, p->body_radius, 0, 0, 0);
 

@@ -228,6 +228,29 @@ static void test_momentum_carries(void) {
           "sideways speed should carry into the push: %f vs %f", a.s.velocity.x, b.s.velocity.x);
 }
 
+/* Gorilla Tag: the head moves inside the body. Bobbing up and down doesn't lift the body off the
+ * floor, and crouching brings the hands (which hang from the real head) closer to the ground. */
+static void test_head_bob_stays_inside(void) {
+    rig r;
+    float y0;
+    int i;
+    rig_init(&r, V(-3, -1, 0), V(3, -1, 0));
+    r.fw.has_floor = 1;
+    rig_start(&r, V(0, 4, 0));
+    rig_step(&r, 30, Z3, Z3, Z3);
+    y0 = r.s.body.y;
+    for (i = 0; i < 10; i++) {
+        rig_step(&r, 3, Z3, Z3, V(0, 0.5f, 0));   /* head up 1.5, hands with it */
+        rig_step(&r, 3, Z3, Z3, V(0, -0.5f, 0));
+    }
+    CHECK(fabsf(r.s.body.y - y0) < 0.05f, "head bobbing moved the body %f", r.s.body.y - y0);
+    /* hands 1 under the head don't reach the floor standing; crouch 2 and they do */
+    CHECK(!r.s.hand[0].touching, "standing: hands in the air");
+    rig_step(&r, 4, Z3, Z3, V(0, -0.5f, 0));
+    CHECK(r.s.hand[0].touching && r.s.hand[1].touching, "crouched: hands on the floor");
+    CHECK(fabsf(r.s.body.y - y0) < 0.5f, "crouching to the floor kept the body there: %f", r.s.body.y - y0);
+}
+
 static void test_wall_climb(void) {
     rig r;
     float y0;
@@ -473,6 +496,7 @@ int main(void) {
         { "slow release does not launch", test_slow_release_does_not_launch },
         { "history length matters", test_history_length_matters },
         { "momentum carries into the next push", test_momentum_carries },
+        { "head bob stays inside the body", test_head_bob_stays_inside },
         { "wall climb", test_wall_climb },
         { "body does not pass walls", test_body_does_not_pass_walls },
         { "room-scale walk collides", test_room_scale_walk_collides },
