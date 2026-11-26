@@ -279,3 +279,20 @@ player". Three causes:
   elbow bent out and down (two equal bones, 0.36 m each times the arm length), and the hand is a
   palm, fingers and a thumb, turned with the controller's aim. Fur and skin colours per Kong.
   Gorilla Tag's own model isn't ours to copy; these are boxes in the same spirit.
+
+### D38. Back to Gorilla Tag's rig: hands hold you up (replaces D34's default)
+"My butt is supposed to drop if my hands are up." Right: GorillaLocomotion's body is a small
+collider half a metre under the head that gravity lands; the real floor plays no part. With the
+hands up you sink to gorilla height, hands on the ground hold you up and pushing down lifts you.
+D34 put the game's floor at the real floor, which made the ground hard to reach at all. Now:
+- Default (`match_height` off, menu "Real floor" off): the Kong's eye height over its feet at
+  the Kong size scale (26 units/m: DK's eyes 0.8 m over the ground). With nothing held the game
+  drops the Kong to the ground; hands on a surface hold the body (no gravity) and push it up.
+- D34's real-floor mode stays as the option, with its fixes: standing height for the floor after
+  a tracking reset (a Quest reset while bent down had put the floor out of reach), the ground
+  5 cm above the real floor.
+- Kept from D34/D37: the prefab's numbers, the release rule, step-side normals, the head inside
+  the body, the arms.
+- The camera base no longer subtracts the frame's head height (the body stopped following it in
+  D37), so the ground doesn't bob a frame behind your head any more.
+Simulator: 42 throws and ~100 units every 2 s, hops ~25 units high.
