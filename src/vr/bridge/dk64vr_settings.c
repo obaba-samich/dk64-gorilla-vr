@@ -107,9 +107,9 @@ static const sfvr_setting_key port_keys[] = {
 	// Black for this long after a snap turn (an optional blink; the turn itself is instant).
 	// 0 = no blink.
 	{ "snap_blink", SFVR_SETTING_FLOAT, 0.0, 0.0, 0.5, NULL },
-	// Cutscenes and scripted cameras: a 3D cinema screen (standard.md section 4), the head in
-	// the game's camera (immersive), or the flat panel.
-	{ "cutscenes", SFVR_SETTING_ENUM, 0.0, 0.0, 2.0, cutscene_values },
+	// Cutscenes and scripted cameras: the head in the game's camera, free to look all round
+	// (immersive, the default), a 3D cinema screen (standard.md section 4), or the flat panel.
+	{ "cutscenes", SFVR_SETTING_ENUM, 1.0, 0.0, 2.0, cutscene_values },
 	{ "cinema_distance", SFVR_SETTING_FLOAT, 3.0, 1.5, 10.0, NULL },
 	{ "cinema_width", SFVR_SETTING_FLOAT, 3.6, 1.0, 10.0, NULL },
 	// Cutscenes play on a TV in a dark room instead of floating in black.

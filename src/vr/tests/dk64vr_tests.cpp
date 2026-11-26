@@ -587,7 +587,7 @@ static void testSettings() {
     const sfvr_setting_key *scaleKey = dk64vr_settings_key((size_t)dk64vr_settings_index("world_scale"));
     CHECK(scaleKey != nullptr && scaleKey->min <= 15.0 / 4.0 && scaleKey->max >= 15.0 * 4.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "right_stick_x"), 0.0, 0.0);
-    CHECK_NEAR(dk64vr_settings_get(&s, "cutscenes"), 0.0, 0.0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "cutscenes"), 1.0, 0.0);  // immersive (D35)
     CHECK_NEAR(dk64vr_settings_get(&s, "level_pitch"), 1.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "camera_auto_rotate"), 1.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "phosphor"), 0.0, 0.0);

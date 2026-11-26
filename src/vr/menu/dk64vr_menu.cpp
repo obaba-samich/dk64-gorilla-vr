@@ -278,7 +278,7 @@ std::vector<Row> buildRows() {
         { "hud_scale", "hud_scale", H, "HUD size", K::Stepper, {}, 50, 200, 10, F::Percent0,
           "100% is 40\xc2\xb0 wide.", W::Hud, false, Virt::None, nullptr },
         { "cutscenes", "cutscenes", H, "Cutscenes", K::Seg, { { 0, "3D cinema", nullptr }, { 1, "Immersive", nullptr }, { 2, "Flat", nullptr } }, 0, 0, 0, F::None,
-          "Immersive puts your head in the game camera. 3D cinema is the comfortable default.", W::Always, false, Virt::None, nullptr },
+          "Immersive (the default): you stand where the game's camera is and can look all the way round, but can't move. 3D cinema: on a TV, the calmer option.", W::Always, false, Virt::None, nullptr },
         { "cinema_room", "cinema_room", H, "Cinema room", K::Toggle, {}, 0, 0, 0, F::None,
           "Cutscenes, DK Arcade and Jetpac on a TV in a dark room. Off: the screen floats in black.", W::Always, false, Virt::None, nullptr },
         { "cinema_distance", "cinema_distance", H, "Cinema distance", K::Slider, {}, 1.5, 10, 0.1, F::Metres,
