@@ -49,7 +49,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Hands drawn in Kong colours | 🧪 | visible at the frame edge in dumps |
 | Arms drawn from the shoulders | 🧪 | eye dumps during the punch routine: fur arm to the hand (2026-11-25) |
 | Real floor from the STAGE space, world sized to your eye height (D34) | 🧪 | `floor: tracked, eyes 1.62 m above it`; scale 12.9 units/m for DK |
-| Rowing along the floor moves DK | 🧪 | after D34: ~900 units in under a minute of synthetic strokes, 62 throws, 117 contacts. Before D34: | ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
+| Rowing along the floor moves DK | 🧪 | after D34: ~900 units in under a minute of synthetic strokes, 62 throws, 117 contacts. Before D34: ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
 | Falling off ledges uses DK64 gravity | 🧪 | treehouse ledge |
 | Throws carry DK (flown by the core, D29) | 🧪 | `launch ... m/s` then `throw over (grabbed)` 10-37 frames later; 19 throws in 2 minutes |
 | Hands let go of ledge sides | 🧪 | 123 contacts in 2 minutes instead of 2 (D29) |
