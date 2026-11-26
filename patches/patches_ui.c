@@ -3036,7 +3036,10 @@ RECOMP_PATCH void func_global_asm_805FD088(Struct805FD088 *arg0, Gfx **arg1, Gfx
             D_global_asm_8076A0B1 &= 0xFFEF;
             D_global_asm_8076A0B3 = 0;
         }
-        if (((D_global_asm_8076A0B1 & 0x10) || (D_global_asm_8076A0B3 != 0)) && ((cc_number_of_players == 1) || (D_global_asm_80750AB8 == 1))) {
+        // @recomp: VR immersive cutscenes: you stand in the scene and look around, so the
+        // letterbox bars (and the narrower picture between them) would sit stuck to your view
+        if (((D_global_asm_8076A0B1 & 0x10) || (D_global_asm_8076A0B3 != 0)) && ((cc_number_of_players == 1) || (D_global_asm_80750AB8 == 1))
+            && !vr_gorilla_hide_cutscene_bars()) {
             gDPPipeSync(dl++);
             gDPSetCycleType(dl++, G_CYC_FILL);
             gDPSetRenderMode(dl++, G_RM_NOOP, G_RM_NOOP2);

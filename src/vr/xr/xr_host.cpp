@@ -2563,6 +2563,7 @@ private:
         }
         h.world_scale = float(setting("gorilla_world_scale"));
         h.match_height = (setting("match_height") != 0.0) ? 1 : 0;
+        h.hide_cutscene_bars = (int(setting("cutscenes")) == 1) ? 1 : 0;  // immersive
         // the real floor in the play space (origin = the head at the last recentre); without a
         // tracked floor, or seated, assume the recentre happened standing
         h.floor_y = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y)

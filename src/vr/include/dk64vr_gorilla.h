@@ -54,6 +54,7 @@ typedef struct dk64vr_hands {
     float floor_y;           // the real floor's height in the play space (metres, so usually
                              // minus your eye height): the game's floor goes there
     int32_t match_height;    // size the world so your eye height is the Kong's (else world_scale)
+    int32_t hide_cutscene_bars; // immersive cutscenes: no letterbox bars stuck to your view
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.

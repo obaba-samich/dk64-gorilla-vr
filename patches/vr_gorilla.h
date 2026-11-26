@@ -34,6 +34,7 @@ typedef struct VrHands {
     s32 unlock_req;
     f32 floor_y;
     s32 match_height;
+    s32 hide_cutscene_bars;
 } VrHands;
 
 typedef struct VrBody {
@@ -78,6 +79,7 @@ void vr_gorilla_pre_frame(void);
 void vr_gorilla_post_frame(void);
 // Draws the hands; called right after the world in the frame's display list.
 Gfx *vr_gorilla_draw_hands(Gfx *dl);
+s32 vr_gorilla_hide_cutscene_bars(void);
 #endif
 
 #endif

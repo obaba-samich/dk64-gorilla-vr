@@ -212,7 +212,7 @@ extern "C" void recomp_vr_take_hud_diag(uint8_t* rdram, recomp_context* ctx) {
 #include "../src/vr/include/dk64vr_gorilla.h"
 
 static_assert(sizeof(dk64vr_hands) % 4 == 0 && sizeof(dk64vr_body) % 4 == 0, "word structs");
-static_assert(sizeof(dk64vr_hands) == 4 * 50, "hands layout changed; update patches/vr_gorilla.h");
+static_assert(sizeof(dk64vr_hands) == 4 * 51, "hands layout changed; update patches/vr_gorilla.h");
 static_assert(sizeof(dk64vr_body) == 4 * 27, "body layout changed; update patches/vr_gorilla.h");
 
 namespace {

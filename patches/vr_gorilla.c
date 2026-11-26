@@ -1379,3 +1379,6 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
     return dl;
 }
 
+s32 vr_gorilla_hide_cutscene_bars(void) {
+    return recomp_vr_is_active() && vr_hands.hide_cutscene_bars;
+}
