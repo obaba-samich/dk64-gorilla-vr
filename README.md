@@ -22,7 +22,7 @@ Real testing will be done soon.
 | Stereo rendering, head tracking at display rate | Works (from [astromaddie/dk64-vr](https://github.com/astromaddie/dk64-vr)) |
 | Menus, cutscenes, DK Arcade / Jetpac | On a TV in a dark room (cinema room) |
 | First person with arm locomotion, climbing, swimming | Works in the simulator |
-| Hands drawn, wrist HUD, gesture abilities | Works in the simulator |
+| Arms and hands drawn, wrist HUD, gesture and stick abilities | Works in the simulator |
 | Tag Anywhere (swap Kong with the stick) | Experimental, off by default |
 
 Every ability still works through the buttons (see [Controls](#controls)). What has and hasn't been
@@ -107,8 +107,9 @@ try `foveation = "off"` (it needs a newer GPU anyway).
 
 ## Controls
 
-Moving is all arms: touch the ground or a wall and push or pull. Let go while moving to throw
-yourself. The faster the last bit of the stroke, the further you go.
+Moving is all arms, like Gorilla Tag: touch the ground or a wall and push or pull. Let go while
+moving to throw yourself; you keep flying until you land or grab something. Push off again while
+you're already moving and you go faster and higher, up to a cap.
 
 Buttons (Quest Touch):
 
@@ -123,15 +124,18 @@ Buttons (Quest Touch):
 | Menu | Start |
 | Left stick click | short: recomp menu, hold 1 s: recentre |
 | Menu + left stick click, held | VR settings |
-| Right stick | left/right: snap turn, up/down: C-up / C-down |
-| Left stick | nothing, unless `stick_move` is on; with Tag Anywhere on, flick left/right to swap Kong |
+| Right stick flick | up: gun out / away, down: throw an orange, left: instrument, right: Kong special (with Tag Anywhere on, left/right swap Kong) |
+| Left stick | left/right: snap turn, up/down: C-up / C-down |
 
-Minecarts, races, Rambi, Enguarde, Pufftoss and the K. Rool Diddy phase switch to the
-third-person camera with the stick.
+That's in first person with your arms. Minecarts, races, Rambi, Enguarde, Pufftoss and the
+K. Rool Diddy phase switch to the third-person camera with the stick. There, and while climbing,
+during long falls or with `stick_move` on, the right stick turns and the left stick moves, and
+the flicks are off.
 
 ### Gestures
 
-Every one still works on its button too.
+Every one still works on its button too, and the gun, oranges, instrument and Kong special are
+also right-stick flicks.
 
 | Move | Gesture |
 |---|---|
@@ -159,11 +163,11 @@ The arm locomotion ones:
 | `arm_scale` | 1.15 | real reach multiplier |
 | `jump_multiplier` | 1.1 | throw speed multiplier |
 | `max_jump_speed` | 6.5 | throw speed cap, metres a second |
-| `stick_move` | false | let the left stick move you too |
-| `gestures` | true | ability gestures; false = buttons only, grips back to C-down / C-up |
+| `stick_move` | false | let the left stick move you too (the right stick then turns, no flicks) |
+| `gestures` | true | ability gestures; false = buttons and stick flicks only, grips back to C-down / C-up |
 | `dominant_hand` | right | gun and menu pointer hand; the other throws oranges and wears the HUD |
 | `duck_crouch` | true | ducking holds Z |
-| `tag_anywhere` | false | flick the left stick to swap Kong (experimental) |
+| `tag_anywhere` | false | flick the right stick left/right to swap Kong (experimental) |
 | `wrist_hud` | true | HUD as a watch on your off hand |
 | `cinema_room` | true | cutscenes and arcade games on a TV in a dark room |
 
@@ -207,7 +211,7 @@ tools/test.sh
 - Ideas from [Dooder64/wave-race-64-vr](https://github.com/Dooder64/wave-race-64-vr),
   [RogueSquadron64Recomp](https://github.com/MikeSemicolonD/RogueSquadron64Recomp) and
   [SkyRecomp-VR](https://github.com/marclemieux64/SkyRecomp-VR).
-- Gorilla Tag (Another Axiom) for the way of moving.
+- Gorilla Tag (Another Axiom) for the way of moving, and its open [GorillaLocomotion](https://github.com/Another-Axiom/GorillaLocomotion) (MIT) as the reference for throws and momentum.
 
 GPL-3.0, like the projects it comes from. The upstream README is in
 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md).
