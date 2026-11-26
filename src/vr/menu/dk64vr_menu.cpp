@@ -255,9 +255,9 @@ std::vector<Row> buildRows() {
         { "dominant_hand", "dominant_hand", Ct, "Pointer hand", K::Seg, { { 0, "Right", nullptr }, { 1, "Left", nullptr } }, 0, 0, 0, F::None,
           "The menu laser and the gun hand. The other hand throws oranges and wears the watch.", W::Always, false, Virt::None, nullptr },
         { "gestures", "gestures", Ct, "Ability gestures", K::Toggle, {}, 0, 0, 0, F::None,
-          "Slam, punch, guns, oranges, instruments and climbing by hand motion. The buttons always work.", W::Always, false, Virt::None, nullptr },
+          "Slam, punch, guns, oranges, instruments and climbing by hand motion. The left-stick flicks and the buttons always work.", W::Always, false, Virt::None, nullptr },
         { "tag_anywhere", "tag_anywhere", Ct, "Tag Anywhere (experimental)", K::Toggle, {}, 0, 0, 0, F::None,
-          "Flick the left stick left or right to swap to a freed Kong, standing on the ground.", W::Always, false, Virt::None, nullptr },
+          "Flick the left stick left or right to swap to a freed Kong, standing on the ground. The instrument and Kong special flicks move off the stick.", W::Always, false, Virt::None, nullptr },
         { "duck_crouch", "duck_crouch", Ct, "Duck to crouch", K::Toggle, {}, 0, 0, 0, F::None,
           "Ducking holds Z: crouch, pads, high jump.", W::Always, false, Virt::None, nullptr },
         { "haptics", "haptics", Ct, "Haptics strength", K::Slider, {}, 0, 1, 0.05, F::Pct,
@@ -1163,7 +1163,8 @@ std::string Model::renderRowControl(const Row &r, bool tile) const {
                     { "L trigger", "Z (crouch)" }, { "R trigger", "R; fires the gun when it's out" },
                     { "R stick", "Turn; up / down = C-up / C-down" }, { "Menu", "Pause (Start)" },
                     { "L stick click", "Recomp menu; hold 1 s to recentre" },
-                    { "L stick flick", "Tag Anywhere, if it's on" },
+                    { "L stick up / down", "Flick: gun out or away / throw an orange" },
+                    { "L stick left / right", "Flick: instrument / Kong special (Tag Anywhere swaps Kong instead)" },
                 };
                 static const struct { const char *b; const char *t; } moves[] = {
                     { "Push / pull", "Hands on the ground or a ledge move you" }, { "Let go", "Mid-swing: throws you" },
