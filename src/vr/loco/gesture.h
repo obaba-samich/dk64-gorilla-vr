@@ -14,6 +14,9 @@
  *   A held in the air ............... Pony Tail Twirl and the other "hold A" glides
  *   Z held on the ground ............ crouch (pads, high jump with A)
  *
+ * Left-stick flicks do the same combos without a gesture: up = gun, down = orange, left =
+ * instrument, right = Kong special.
+ *
  * Same rules as gtl.c: C99, no libc, floats only. Positions are metres in the play space
  * (OpenXR: x right, y up, z back), velocities in metres per second.
  */
@@ -75,6 +78,11 @@ typedef struct gst_input {
     int in_water;
     int gun_out;               /* the game says the gun is drawn */
     int touching[2];           /* the locomotion core has this hand stuck to something */
+    float stick[2];            /* left thumbstick, -1..1, y up */
+    int stick_actions;         /* flick the left stick for the gun, an orange, the instrument and
+                                  the Kong special (off while the stick moves or climbs) */
+    int stick_swaps_kong;      /* Tag Anywhere has left / right: only up / down act */
+    int no_motion;             /* ability gestures off: only the stick actions */
     float dt;
 } gst_input;
 
@@ -108,6 +116,7 @@ typedef struct gst_state {
     int aim_frames;
     float recent_vel[2][4][3];  /* last few frames of hand velocity, for throws */
     int recent_pos;
+    int stick_dir;             /* the flick being held (1 up, 2 down, 3 left, 4 right), 0 = centred */
 } gst_state;
 
 void gst_default_params(gst_params *p);

@@ -172,103 +172,146 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         s->standing_y -= 0.03f * in->dt;
     }
 
-    if (!gst_busy(s)) {
-        /* Simian Slam: both hands down hard while in the air */
-        if (in->airborne && !in->in_water && gst_ready(s, GST_EV_SLAM)
-            && lv[0][1] < -p->slam_speed && lv[1][1] < -p->slam_speed) {
-            gst_tap(s, GST_N64_Z, 2);
-            gst_cool(s, GST_EV_SLAM, 0.6f);
-            out->events |= GST_EV_SLAM;
-        }
-    }
-
-    /* Gun: dominant hand closes at the hip. Again to put it away. */
-    h = p->dominant ? 1 : 0;
-    other = 1 - h;
-    if (!gst_busy(s) && !in->airborne && grip_down[h] && gst_at_hip(lp[h], h) && gst_ready(s, GST_EV_GUN)) {
-        gst_combo(s, GST_N64_CL);
-        gst_cool(s, GST_EV_GUN, 0.5f);
-        out->events |= GST_EV_GUN;
-    }
-
-    /* Fire: the gun hand's trigger, aimed where that hand moves the shot */
-    if (in->gun_out && trig_down[h] && !gst_busy(s)) {
-        gst_tap(s, GST_N64_B, 2);
-        out->events |= GST_EV_FIRE;
-    }
-
-    /* Orange: off hand closes at the hip, then a throw and let go */
-    if (grip_down[other] && gst_at_hip(lp[other], other)) {
-        s->orange_held = 1;
-    }
-    if (s->orange_held && grip_up[other]) {
-        /* people let go at the end of the swing, so use the fastest of the last few frames */
-        float best = 0.0f, bv[3] = { 0.0f, 0.0f, 0.0f }, lb[3];
-        int f;
-        for (f = 0; f < 4; f++) {
-            const float *v = s->recent_vel[other][f];
-            float sp2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-            if (sp2 > best) {
-                best = sp2;
-                bv[0] = v[0]; bv[1] = v[1]; bv[2] = v[2];
+    if (!in->no_motion) {
+        if (!gst_busy(s)) {
+            /* Simian Slam: both hands down hard while in the air */
+            if (in->airborne && !in->in_water && gst_ready(s, GST_EV_SLAM)
+                && lv[0][1] < -p->slam_speed && lv[1][1] < -p->slam_speed) {
+                gst_tap(s, GST_N64_Z, 2);
+                gst_cool(s, GST_EV_SLAM, 0.6f);
+                out->events |= GST_EV_SLAM;
             }
         }
-        gst_local(in, bv, 0, lb);
-        s->orange_held = 0;
-        if (best > p->throw_speed * p->throw_speed && lb[2] > 0.0f && !gst_busy(s) && !in->airborne
-            && gst_ready(s, GST_EV_ORANGE)) {
-            gst_combo(s, GST_N64_CR);
-            gst_aim(s, gst_yaw_of(bv[0], bv[2]), 6);
-            gst_cool(s, GST_EV_ORANGE, 0.4f);
-            out->events |= GST_EV_ORANGE;
-        }
-    }
 
-    /* Instrument: both hands up in front of the face, both closed, held a moment */
-    if (in->grip[0] > 0.6f && in->grip[1] > 0.6f && gst_in_front_of_face(lp[0]) && gst_in_front_of_face(lp[1])) {
-        float dx = lp[0][0] - lp[1][0], dy = lp[0][1] - lp[1][1], dz = lp[0][2] - lp[1][2];
-        if (dx * dx + dy * dy + dz * dz < 0.40f * 0.40f) {
-            s->instrument_frames++;
+        /* Gun: dominant hand closes at the hip. Again to put it away. */
+        h = p->dominant ? 1 : 0;
+        other = 1 - h;
+        if (!gst_busy(s) && !in->airborne && grip_down[h] && gst_at_hip(lp[h], h) && gst_ready(s, GST_EV_GUN)) {
+            gst_combo(s, GST_N64_CL);
+            gst_cool(s, GST_EV_GUN, 0.5f);
+            out->events |= GST_EV_GUN;
+        }
+
+        /* Fire: the gun hand's trigger, aimed where that hand moves the shot */
+        if (in->gun_out && trig_down[h] && !gst_busy(s)) {
+            gst_tap(s, GST_N64_B, 2);
+            out->events |= GST_EV_FIRE;
+        }
+
+        /* Orange: off hand closes at the hip, then a throw and let go */
+        if (grip_down[other] && gst_at_hip(lp[other], other)) {
+            s->orange_held = 1;
+        }
+        if (s->orange_held && grip_up[other]) {
+            /* people let go at the end of the swing, so use the fastest of the last few frames */
+            float best = 0.0f, bv[3] = { 0.0f, 0.0f, 0.0f }, lb[3];
+            int f;
+            for (f = 0; f < 4; f++) {
+                const float *v = s->recent_vel[other][f];
+                float sp2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+                if (sp2 > best) {
+                    best = sp2;
+                    bv[0] = v[0]; bv[1] = v[1]; bv[2] = v[2];
+                }
+            }
+            gst_local(in, bv, 0, lb);
+            s->orange_held = 0;
+            if (best > p->throw_speed * p->throw_speed && lb[2] > 0.0f && !gst_busy(s) && !in->airborne
+                && gst_ready(s, GST_EV_ORANGE)) {
+                gst_combo(s, GST_N64_CR);
+                gst_aim(s, gst_yaw_of(bv[0], bv[2]), 6);
+                gst_cool(s, GST_EV_ORANGE, 0.4f);
+                out->events |= GST_EV_ORANGE;
+            }
+        }
+
+        /* Instrument: both hands up in front of the face, both closed, held a moment */
+        if (in->grip[0] > 0.6f && in->grip[1] > 0.6f && gst_in_front_of_face(lp[0]) && gst_in_front_of_face(lp[1])) {
+            float dx = lp[0][0] - lp[1][0], dy = lp[0][1] - lp[1][1], dz = lp[0][2] - lp[1][2];
+            if (dx * dx + dy * dy + dz * dz < 0.40f * 0.40f) {
+                s->instrument_frames++;
+            } else {
+                s->instrument_frames = 0;
+            }
         } else {
             s->instrument_frames = 0;
         }
-    } else {
-        s->instrument_frames = 0;
-    }
-    if (s->instrument_frames == 8 && !gst_busy(s) && !in->airborne && gst_ready(s, GST_EV_INSTRUMENT)) {
-        gst_combo(s, GST_N64_CU);
-        gst_cool(s, GST_EV_INSTRUMENT, 2.0f);
-        out->events |= GST_EV_INSTRUMENT;
+        if (s->instrument_frames == 8 && !gst_busy(s) && !in->airborne && gst_ready(s, GST_EV_INSTRUMENT)) {
+            gst_combo(s, GST_N64_CU);
+            gst_cool(s, GST_EV_INSTRUMENT, 2.0f);
+            out->events |= GST_EV_INSTRUMENT;
+        }
+
+        /* Punches: a fast forward jab from chest height, not holding on. Two together = special. */
+        for (h = 0; h < 2; h++) {
+            /* touching is fine: a punch into a wall or an enemy is still a punch. Chest height keeps
+               rowing (hands low, on the ground) out. */
+            int jab = in->grip[h] < 0.4f && lp[h][1] > -0.55f
+                && lv[h][2] > p->punch_speed && lv[h][2] > 2.0f * gst_abs(lv[h][1]);
+            if (jab && s->punch_wait[h] == 0 && gst_ready(s, GST_EV_PUNCH)) {
+                s->punch_wait[h] = 1;
+            }
+        }
+        if (s->punch_wait[0] && s->punch_wait[1]) {
+            if (!gst_busy(s) && !in->gun_out) {
+                gst_combo(s, GST_N64_B);
+                gst_aim(s, in->head_yaw, 6);
+                out->events |= GST_EV_SPECIAL;
+            }
+            gst_cool(s, GST_EV_PUNCH, 0.5f);
+            s->punch_wait[0] = s->punch_wait[1] = 0;
+        } else {
+            for (h = 0; h < 2; h++) {
+                if (s->punch_wait[h] && ++s->punch_wait[h] > p->pair_frames) {
+                    if (!gst_busy(s) && !in->gun_out) {
+                        gst_tap(s, GST_N64_B, 2);
+                        gst_aim(s, gst_yaw_of(in->hand_vel[h][0], in->hand_vel[h][2]), 4);
+                        out->events |= GST_EV_PUNCH;
+                    }
+                    gst_cool(s, GST_EV_PUNCH, 0.35f);
+                    s->punch_wait[0] = s->punch_wait[1] = 0;
+                }
+            }
+        }
     }
 
-    /* Punches: a fast forward jab from chest height, not holding on. Two together = special. */
-    for (h = 0; h < 2; h++) {
-        /* touching is fine: a punch into a wall or an enemy is still a punch. Chest height keeps
-           rowing (hands low, on the ground) out. */
-        int jab = in->grip[h] < 0.4f && lp[h][1] > -0.55f
-            && lv[h][2] > p->punch_speed && lv[h][2] > 2.0f * gst_abs(lv[h][1]);
-        if (jab && s->punch_wait[h] == 0 && gst_ready(s, GST_EV_PUNCH)) {
-            s->punch_wait[h] = 1;
+    /* Left-stick flicks: the same combos without a gesture. A flick fires once; the stick has
+     * to come back to the middle before the next. */
+    {
+        float x = in->stick[0], y = in->stick[1];
+        float ax = gst_abs(x), ay = gst_abs(y);
+        int dir = 0;
+        if (ay > 0.7f && ay > ax) {
+            dir = y > 0.0f ? 1 : 2;
+        } else if (ax > 0.7f && ax > ay) {
+            dir = x < 0.0f ? 3 : 4;
         }
-    }
-    if (s->punch_wait[0] && s->punch_wait[1]) {
-        if (!gst_busy(s) && !in->gun_out) {
-            gst_combo(s, GST_N64_B);
-            gst_aim(s, in->head_yaw, 6);
-            out->events |= GST_EV_SPECIAL;
-        }
-        gst_cool(s, GST_EV_PUNCH, 0.5f);
-        s->punch_wait[0] = s->punch_wait[1] = 0;
-    } else {
-        for (h = 0; h < 2; h++) {
-            if (s->punch_wait[h] && ++s->punch_wait[h] > p->pair_frames) {
-                if (!gst_busy(s) && !in->gun_out) {
-                    gst_tap(s, GST_N64_B, 2);
-                    gst_aim(s, gst_yaw_of(in->hand_vel[h][0], in->hand_vel[h][2]), 4);
-                    out->events |= GST_EV_PUNCH;
+        if (!in->stick_actions || (ax < 0.3f && ay < 0.3f)) {
+            s->stick_dir = 0;
+        } else if (dir != 0 && s->stick_dir == 0) {
+            s->stick_dir = dir;
+            if (in->stick_swaps_kong && dir >= 3) {
+                /* Tag Anywhere's */
+            } else if (!gst_busy(s) && !in->airborne) {
+                if (dir == 1 && gst_ready(s, GST_EV_GUN)) {
+                    gst_combo(s, GST_N64_CL);
+                    gst_cool(s, GST_EV_GUN, 0.5f);
+                    out->events |= GST_EV_GUN;
+                } else if (dir == 2 && gst_ready(s, GST_EV_ORANGE)) {
+                    gst_combo(s, GST_N64_CR);
+                    gst_aim(s, in->head_yaw, 6);
+                    gst_cool(s, GST_EV_ORANGE, 0.4f);
+                    out->events |= GST_EV_ORANGE;
+                } else if (dir == 3 && gst_ready(s, GST_EV_INSTRUMENT)) {
+                    gst_combo(s, GST_N64_CU);
+                    gst_cool(s, GST_EV_INSTRUMENT, 2.0f);
+                    out->events |= GST_EV_INSTRUMENT;
+                } else if (dir == 4 && !in->gun_out && gst_ready(s, GST_EV_SPECIAL)) {
+                    gst_combo(s, GST_N64_B);
+                    gst_aim(s, in->head_yaw, 6);
+                    gst_cool(s, GST_EV_SPECIAL, 0.5f);
+                    out->events |= GST_EV_SPECIAL;
                 }
-                gst_cool(s, GST_EV_PUNCH, 0.35f);
-                s->punch_wait[0] = s->punch_wait[1] = 0;
             }
         }
     }
@@ -276,13 +319,13 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
     hold = gst_seq_mask(s);
 
     /* Holds that last as long as the pose does */
-    if (in->airborne && !in->in_water && lp[0][0] < -p->twirl_width && lp[1][0] > p->twirl_width
+    if (!in->no_motion && in->airborne && !in->in_water && lp[0][0] < -p->twirl_width && lp[1][0] > p->twirl_width
         && lp[0][1] > -0.45f && lp[1][1] > -0.45f) {
         hold |= GST_N64_A;
         out->events |= GST_EV_TWIRL;
     }
     /* ducking to reach the ground while rowing is not a crouch: only with both hands free */
-    if (p->crouch_by_ducking && !in->airborne && !in->in_water && !in->touching[0] && !in->touching[1]
+    if (!in->no_motion && p->crouch_by_ducking && !in->airborne && !in->in_water && !in->touching[0] && !in->touching[1]
         && in->head[1] < s->standing_y - p->duck_depth) {
         hold |= GST_N64_Z;
         out->events |= GST_EV_CROUCH;
@@ -293,7 +336,7 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         float pull = 0.0f;
         int n = 0;
         for (h = 0; h < 2; h++) {
-            if (in->grip[h] > 0.6f && lp[h][1] > -0.25f && !in->touching[h] && !(s->orange_held && h == other)) {
+            if (!in->no_motion && in->grip[h] > 0.6f && lp[h][1] > -0.25f && !in->touching[h] && !(s->orange_held && h == other)) {
                 pull += -lv[h][1];
                 n++;
             }

@@ -328,6 +328,76 @@ static void test_left_handed(void) {
     CHECK(r.events & GST_EV_GUN, "left-handed gun");
 }
 
+static void flick(rig *r, float x, float y) {
+    r->in.stick[0] = x; r->in.stick[1] = y;
+    rig_run(r, 3);
+    r->in.stick[0] = 0.0f; r->in.stick[1] = 0.0f;
+    rig_run(r, 12);
+}
+
+static void test_stick_actions(void) {
+    rig r;
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, 0.0f, 1.0f);
+    CHECK(r.events == GST_EV_GUN, "up = gun, events %x", r.events);
+    CHECK((r.seen_hold & (GST_N64_Z | GST_N64_CL)) == (GST_N64_Z | GST_N64_CL), "gun combo, hold %x", r.seen_hold);
+
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, 0.0f, -1.0f);
+    CHECK(r.events == GST_EV_ORANGE && (r.seen_hold & GST_N64_CR), "down = orange, events %x", r.events);
+
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, -1.0f, 0.0f);
+    CHECK(r.events == GST_EV_INSTRUMENT && (r.seen_hold & GST_N64_CU), "left = instrument, events %x", r.events);
+
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, 1.0f, 0.0f);
+    CHECK(r.events == GST_EV_SPECIAL && (r.seen_hold & GST_N64_B), "right = special, events %x", r.events);
+}
+
+static void test_stick_flick_fires_once(void) {
+    rig r;
+    int n = 0, f;
+    rig_init(&r); r.in.stick_actions = 1;
+    r.in.stick[1] = -1.0f;
+    rig_run(&r, 60);   /* held down for two seconds: one orange, not one per cooldown */
+    for (f = 1; f < 32; f++) {
+        if ((r.first_hold[f] & GST_N64_CR) && !(r.first_hold[f - 1] & GST_N64_CR)) n++;
+    }
+    CHECK(n == 1, "held flick threw %d oranges in the first second", n);
+}
+
+static void test_stick_actions_off(void) {
+    rig r;
+    rig_init(&r);                       /* stick_actions 0: the stick moves or climbs */
+    flick(&r, 0.0f, 1.0f);
+    flick(&r, 1.0f, 0.0f);
+    CHECK(r.events == 0 && r.seen_hold == 0, "nothing without stick_actions, events %x", r.events);
+
+    rig_init(&r); r.in.stick_actions = 1; r.in.stick_swaps_kong = 1;
+    flick(&r, 1.0f, 0.0f);
+    flick(&r, -1.0f, 0.0f);
+    CHECK(r.events == 0, "Tag Anywhere owns left / right, events %x", r.events);
+    flick(&r, 0.0f, 1.0f);
+    CHECK(r.events == GST_EV_GUN, "up still draws the gun, events %x", r.events);
+
+    rig_init(&r); r.in.stick_actions = 1; r.in.airborne = 1;
+    flick(&r, 0.0f, 1.0f);
+    CHECK(r.events == 0, "no gun in the air, events %x", r.events);
+}
+
+static void test_no_motion_keeps_stick(void) {
+    rig r;
+    rig_init(&r); r.in.no_motion = 1; r.in.stick_actions = 1;
+    set_hand(&r, 1, 0.25f, 0.0f, 0.35f);
+    set_vel(&r, 1, 0.0f, 0.0f, 4.0f);   /* a punch the gestures would see */
+    rig_run(&r, 10);
+    CHECK(r.events == 0, "gestures off: no punch, events %x", r.events);
+    set_vel(&r, 1, 0.0f, 0.0f, 0.0f);
+    flick(&r, 0.0f, -1.0f);
+    CHECK(r.events == GST_EV_ORANGE, "gestures off: the stick still throws, events %x", r.events);
+}
+
 int main(void) {
     test_idle_presses_nothing();
     test_slam_in_air();
@@ -348,6 +418,10 @@ int main(void) {
     test_duck_crouch();
     test_climb_pull();
     test_left_handed();
+    test_stick_actions();
+    test_stick_flick_fires_once();
+    test_stick_actions_off();
+    test_no_motion_keeps_stick();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }
