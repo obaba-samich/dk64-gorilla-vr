@@ -521,10 +521,11 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     g.gun_out = vr_gun_drawn(player);
     // gestures off still leaves the stick actions
     g.no_motion = !vr_hands.gestures;
-    // left-stick flicks: gun, orange, instrument, Kong special. Not while the stick moves you
-    // (stick_move), steers a long fall or climbs.
-    g.stick[0] = vr_hands.stick[0][0];
-    g.stick[1] = vr_hands.stick[0][1];
+    // right-stick flicks: gun, orange, instrument, Kong special. Not while the left stick moves
+    // you (stick_move), steers a long fall or climbs: then the right stick turns as usual. While
+    // they're on, the host moves turning and C-up / C-down to the left stick.
+    g.stick[0] = vr_hands.stick[1][0];
+    g.stick[1] = vr_hands.stick[1][1];
     g.stick_actions = !vr_hands.stick_move && vr_body_mode == VR_BODY_ARMS && vr_air_frames <= 24;
     g.stick_swaps_kong = vr_hands.tag_anywhere;
     g.dt = dt;
@@ -537,12 +538,12 @@ static void vr_gorilla_gestures(Actor *player, const gtl_input *loco_in, f32 dt)
     if (vr_gst_out.events & ~(GST_EV_CROUCH | GST_EV_CLIMB | GST_EV_TWIRL)) {
         vr_tag_buzz = 1;  // a short buzz on both hands: the gesture registered
         recomp_printf("[vr-gesture] events %x hold %x (stick %.1f %.1f, gun %d)\n", vr_gst_out.events, vr_gst_out.hold,
-            vr_hands.stick[0][0], vr_hands.stick[0][1], g.gun_out);
+            vr_hands.stick[1][0], vr_hands.stick[1][1], g.gun_out);
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tag Anywhere (experimental, `tag_anywhere`): flick the left stick to swap to the previous / next
+// Tag Anywhere (experimental, `tag_anywhere`): flick the right stick left / right to swap to the previous / next
 // freed Kong without a Tag Barrel. The swap follows the DK64 Randomizer's (MIT, base-hack
 // src/fixes/tag_anywhere.c): set the hand models, point the HUD at the new Kong, swap the
 // character, resume normal movement. Only allowed in plain standing play, so nothing the swap
@@ -645,7 +646,7 @@ static void vr_tag_to(Actor *p, s32 next) {
 }
 
 static void vr_tag_anywhere(Actor *p) {
-    f32 x = vr_hands.stick[0][0];
+    f32 x = vr_hands.stick[1][0];   // right stick left / right, with the other stick actions
     s32 dir = 0, k, i, next;
     if (vr_tag_cooldown > 0) {
         vr_tag_cooldown--;

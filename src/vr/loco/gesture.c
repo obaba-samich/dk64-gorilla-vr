@@ -275,7 +275,7 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
         }
     }
 
-    /* Left-stick flicks: the same combos without a gesture. A flick fires once; the stick has
+    /* Right-stick flicks: the same combos without a gesture. A flick fires once; the stick has
      * to come back to the middle before the next. */
     {
         float x = in->stick[0], y = in->stick[1];

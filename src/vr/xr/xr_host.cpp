@@ -2517,7 +2517,7 @@ private:
         h.stick[1][0] = s.rStick[0];
         h.stick[1][1] = s.rStick[1];
         if ((setting("diag_stick_actions") > 0.0) && (diagGorillaStartS != 0.0)) {
-            // diagnostics: after the rowing, flick the left stick up, down, left, right, one
+            // diagnostics: after the rowing, flick the right stick up, down, left, right, one
             // every diag_stick_actions seconds, held 0.3 s (gun, orange, instrument, special)
             const double t = displayS - diagGorillaStartS - setting("diag_gorilla");
             const double every = setting("diag_stick_actions");
@@ -2525,8 +2525,8 @@ private:
                 static const float dirs[4][2] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
                 const int n = int(t / every);
                 if (std::fmod(t, every) < 0.3) {
-                    h.stick[0][0] = dirs[n % 4][0];
-                    h.stick[0][1] = dirs[n % 4][1];
+                    h.stick[1][0] = dirs[n % 4][0];
+                    h.stick[1][1] = dirs[n % 4][1];
                 }
             }
         }
@@ -2595,6 +2595,9 @@ private:
             dk64vr_body prevBody, lastBody;
             dk64vr_get_bodies(&prevBody, &lastBody);
             context.gesturesOwnGrips = lastBody.active && (setting("gestures") != 0.0);
+            // the same condition as the game's stick actions (patches/vr_gorilla.c)
+            context.stickActionsOnRight = lastBody.active && (lastBody.mode == DK64VR_BODY_ARMS) && !lastBody.stick_free
+                && (setting("stick_move") == 0.0);
         }
         const float dt = float(std::min(periodS, 0.1));
         if (!s.valid) {
