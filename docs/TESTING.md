@@ -9,8 +9,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 
 | Test | How | Status |
 |---|---|---|
-| Locomotion core: 26 cases (stick, push, launch, cap, history, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
-| Gestures: 20 cases (adds: no crouch while a hand rows) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
+| Locomotion core: 27 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
+| Gestures: 24 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
 
@@ -47,9 +47,11 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Body follows DK, first-person camera | 🧪 | DK Isles |
 | Own model hidden | 🧪 | eye dumps |
 | Hands drawn in Kong colours | 🧪 | visible at the frame edge in dumps |
-| Rowing along the floor moves DK | 🧪 | ~240 units in two minutes of synthetic strokes |
+| Arms drawn from the shoulders | 🧪 | eye dumps during the punch routine: fur arm to the hand (2026-11-25) |
+| Rowing along the floor moves DK | 🧪 | ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
 | Falling off ledges uses DK64 gravity | 🧪 | treehouse ledge |
-| Throw → jump with the throw's speed | 🧪 | `jump started, speed set to` log lines |
+| Throws carry DK (flown by the core, D29) | 🧪 | `launch ... m/s` then `throw over (grabbed)` 10-37 frames later; 19 throws in 2 minutes |
+| Hands let go of ledge sides | 🧪 | 123 contacts in 2 minutes instead of 2 (D29) |
 | Climbing a ledge / step by pulling down | ⬜ | wall contacts from floor-height steps; not exercised by the synthetic hands |
 | Flat walls stop the body | ⬜ | relies on the game's wall pass |
 | Swimming by paddling, under water and at the surface | ⬜ | code in, never reached in the sim |
@@ -78,10 +80,10 @@ gun draw / holster (Z+C-left), orange (Z+C-right), with snap turns and Kong swap
 |---|---|---|---|---|
 | Simian Slam | both hands down hard in the air | ✅ | ⬜ | ⬜ |
 | Punch | fast jab | ✅ | 🧪 | ⬜ |
-| Kong special (Chimpy Charge, Primate Punch, Orangstand...) | double jab | ✅ | 🧪 | ⬜ |
-| Guns (all five) | dominant hand grip at hip, trigger fires | ✅ | 🧪 draw only | ⬜ |
-| Oranges | off hand grip at hip, throw, release | ✅ | 🧪 | ⬜ |
-| Instruments (all five) | both hands up front, both grips | ✅ | ⬜ | ⬜ |
+| Kong special (Chimpy Charge, Primate Punch, Orangstand...) | double jab, or left stick right | ✅ | 🧪 | ⬜ |
+| Guns (all five) | dominant hand grip at hip, or left stick up; trigger fires | ✅ | 🧪 draw (gesture and stick) | ⬜ |
+| Oranges | off hand grip at hip, throw, release; or left stick down | ✅ | 🧪 | ⬜ |
+| Instruments (all five) | both hands up front, both grips; or left stick left | ✅ | 🧪 stick: the game plays it (state 103) | ⬜ |
 | Vines, ladders, trees | grip overhead, pull | ✅ | ⬜ | ⬜ |
 | Pony Tail Twirl | arms out wide in the air | ✅ | ⬜ | ⬜ |
 | Crouch, pads (Baboon Blast, Spring, Balloon, Monkeyport...) | duck = Z | ✅ | ⬜ | ⬜ |
