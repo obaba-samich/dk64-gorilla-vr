@@ -141,7 +141,7 @@ namespace {
 
 enum class Kind { Seg, Toggle, Slider, Stepper, Height, Info, Action, Map };
 enum class Fmt { None, Pct, PctFlat, Metres, DegPerSec, Blink, Times1, Times2, Percent0, Offset, PctOff, Degrees2 };
-enum class When { Always, TurnOn, TurnSnap, TurnSmooth, Vignette, Hud, Cinema, FovOn, ResManual, Roomscale, ManualScale };
+enum class When { Always, TurnOn, TurnSnap, TurnSmooth, Vignette, Hud, Cinema, FovOn, ResManual, Roomscale, ManualScale, Immersive };
 enum class Virt { None, MoveRef, ResAuto };
 
 struct Opt {
@@ -279,6 +279,8 @@ std::vector<Row> buildRows() {
           "100% is 40\xc2\xb0 wide.", W::Hud, false, Virt::None, nullptr },
         { "cutscenes", "cutscenes", H, "Cutscenes", K::Seg, { { 0, "3D cinema", nullptr }, { 1, "Immersive", nullptr }, { 2, "Flat", nullptr } }, 0, 0, 0, F::None,
           "Immersive (the default): you stand where the game's camera is and can look all the way round, but can't move. 3D cinema: on a TV, the calmer option.", W::Always, false, Virt::None, nullptr },
+        { "cutscene_pov", "cutscene_pov", H, "Shops in first person", K::Toggle, {}, 0, 0, 0, F::None,
+          "Cranky's, Funky's, Candy's and Snide's cutscenes start through the Kong's eyes. In any cutscene a right stick click switches between first and third person.", W::Immersive, false, Virt::None, nullptr },
         { "cinema_room", "cinema_room", H, "Cinema room", K::Toggle, {}, 0, 0, 0, F::None,
           "Cutscenes, DK Arcade and Jetpac on a TV in a dark room. Off: the screen floats in black.", W::Always, false, Virt::None, nullptr },
         { "cinema_distance", "cinema_distance", H, "Cinema distance", K::Slider, {}, 1.5, 10, 0.1, F::Metres,
@@ -432,6 +434,7 @@ bool Model::rowEnabled(const Row &r) const {
         case When::ResManual: return g("resolution_scale") != DK64VR_RESOLUTION_AUTO;
         case When::Roomscale: return g("roomscale") != 0.0;
         case When::ManualScale: return g("match_height") == 0.0;
+        case When::Immersive: return int(g("cutscenes")) == 1;
         default: return true;
     }
 }
@@ -1166,6 +1169,7 @@ std::string Model::renderRowControl(const Row &r, bool tile) const {
                     { "L trigger", "Z (crouch)" }, { "R trigger", "R; fires the gun when it's out" },
                     { "L stick", "Turn; up / down = C-up / C-down" }, { "Menu", "Pause (Start)" },
                     { "L stick click", "Recomp menu; hold 1 s to recentre" },
+                    { "R stick click", "In a cutscene: first / third person" },
                     { "R stick up / down", "Flick: gun out or away / throw an orange" },
                     { "R stick left / right", "Flick: instrument / Kong special (Tag Anywhere swaps Kong instead)" },
                 };
