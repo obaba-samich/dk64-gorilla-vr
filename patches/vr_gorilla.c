@@ -275,10 +275,45 @@ static u32 vr_frame;
 static s32 vr_drive;               // 1 = replace the game's move with vr_disp
 static gtl_vec3 vr_disp;
 
-// Pending throw, waiting for the game to start the jump.
-static s32 vr_launch_pending;
-static gtl_vec3 vr_launch_v;
-static s32 vr_launch_count;
+// A throw the arms own: after letting go, the locomotion core flies the body itself (momentum,
+// gravity, sliding, hitting walls) instead of handing the game a jump or a run speed it would
+// brake away. It ends on landing and slowing down, a hand grabbing something, water, or the
+// game taking the player over (a hit, a slam, a vine, a barrel...).
+#define VR_STATE_NORMAL 0x0C   // player states, see the note above vr_in_tag_barrel
+#define VR_STATE_AIR 0x1E      // off the ground (seen falling, and while the hands hold the body up)
+static s32 vr_launch_count;        // bumps on upward throws: the host presses A for the jump
+static s32 vr_flying;
+static s32 vr_fly_frames;
+static u8 vr_fly_states[8];        // player states that belong to this throw
+static s32 vr_fly_state_count;
+static gtl_vec3 vr_fly_expect;     // where the throw put the body, to see the game push it back
+#define VR_FLY_GRAVITY 9.8f        // m/s^2 at the world scale (Gorilla Tag uses Earth's)
+#define VR_FLY_STOP 0.35f          // m/s: on the ground and slower than this, the game takes over
+
+static void vr_fly_end(const char *why) {
+    if (vr_flying) {
+        recomp_printf("[vr-loco] throw over (%s) after %d frames\n", why, vr_fly_frames);
+    }
+    vr_flying = 0;
+}
+
+static s32 vr_fly_state_ok(u8 st) {
+    s32 i;
+    if (st == VR_STATE_NORMAL || st == VR_STATE_AIR) {
+        return 1;
+    }
+    for (i = 0; i < vr_fly_state_count; i++) {
+        if (vr_fly_states[i] == st) {
+            return 1;
+        }
+    }
+    if (vr_fly_frames <= 8 && vr_fly_state_count < 8) {
+        // the jump the host's A press starts, and its first air states
+        vr_fly_states[vr_fly_state_count++] = st;
+        return 1;
+    }
+    return 0;
+}
 
 // Gestures (src/vr/loco/gesture.c, compiled in through vr_loco_core.c).
 static gst_state vr_gst;
@@ -343,8 +378,7 @@ static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
 // game, each followed by func_global_asm_806CFF9C "resume"); 7 / 0xA / 0xB are the Tag Barrel's
 // lean states (its input handler turns stick X into 0xA / 0xB). Climbing is found by behaviour
 // instead (see vr_update_climb).
-#define VR_STATE_NORMAL 0x0C
-#define VR_STATE_AIR 0x1E      // off the ground (seen falling, and while the hands hold the body up)
+// (VR_STATE_NORMAL and VR_STATE_AIR are defined with the throw state above.)
 
 static s32 vr_in_tag_barrel(Actor *player) {
     u8 st = player->control_state;
@@ -749,6 +783,7 @@ void vr_gorilla_pre_frame(void) {
     if (!vr_should_drive(player)) {
         vr_initialised = 0;
         vr_air_frames = 0;
+        vr_fly_end("arm locomotion paused");
         if (vr_body_mode == VR_BODY_BARREL && vr_hands.gestures) {
             vr_barrel_assist();
         }
@@ -809,8 +844,36 @@ void vr_gorilla_pre_frame(void) {
         f32 dx = before.x - vr_loco.body.x, dy = before.y - vr_loco.body.y, dz = before.z - vr_loco.body.z;
         if (dx * dx + dy * dy + dz * dz > 60.0f * 60.0f) {
             gtl_reset(&vr_loco, before, &in);  // warped (loading zone, warp pad, cutscene)
+            vr_fly_end("warped");
         } else {
             vr_loco.body = before;
+        }
+    }
+
+    if (vr_flying) {
+        // The game's own collision ran after last frame's throw step (room walls, ceilings,
+        // floors our sweep doesn't see). Where it pushed the body back, lose the speed that went
+        // that way, so a wall stops you instead of being pushed into forever.
+        gtl_vec3 *v = &vr_loco.velocity;
+        f32 cx = before.x - vr_fly_expect.x, cz = before.z - vr_fly_expect.z;
+        f32 cy = before.y - vr_fly_expect.y;
+        f32 l = vr_sqrt(cx * cx + cz * cz);
+        if (l > 0.25f) {
+            f32 into = (v->x * cx + v->z * cz) / l;
+            if (into < 0.0f) {
+                v->x -= cx / l * into;
+                v->z -= cz / l * into;
+            }
+        }
+        if ((cy > 0.25f && v->y < 0.0f) || (cy < -0.25f && v->y > 0.0f)) {
+            v->y = 0.0f;  // landed on something, or hit a ceiling
+        }
+        vr_fly_frames++;
+        if (vr_in_tag_barrel(player) || !vr_fly_state_ok(player->control_state)) {
+            recomp_printf("[vr-loco] game took the player (state %d)\n", player->control_state);
+            vr_fly_end("game state");
+        } else if (vr_fly_frames > 30 * 15) {
+            vr_fly_end("too long");
         }
     }
 
@@ -841,6 +904,17 @@ void vr_gorilla_pre_frame(void) {
         // on a tree, ladder or vine the game holds the player; the hands only climb (stick)
         in.hand_enabled[0] = in.hand_enabled[1] = 0;
         in.mode = GTL_MODE_FROZEN;
+        vr_fly_end("climbing");
+    }
+    if (vr_in_water) {
+        vr_fly_end("water");
+    }
+    if (vr_flying) {
+        // the core flies the body: its own gravity, sliding and sweeps against the floors
+        in.external_flight = 0;
+        vr_params.gravity = VR_FLY_GRAVITY * vr_hands.world_scale;
+        vr_params.terminal_velocity = 30.0f * vr_hands.world_scale;
+        vr_params.ground_friction = 4.0f;
     }
     gtl_step(&vr_loco, &vr_params, &vr_world, &in, &ev);
 
@@ -854,48 +928,37 @@ void vr_gorilla_pre_frame(void) {
         vr_loco.body.y = before.y;
     }
     vr_drive = vr_body_mode == VR_BODY_ARMS && (vr_loco.hand[0].touching || vr_loco.hand[1].touching
-        || vr_in_water || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f);
+        || vr_in_water || vr_flying || (vr_disp.x * vr_disp.x + vr_disp.z * vr_disp.z) > 0.0001f);
     vr_active = 1;
 
     if (ev.launched) {
         f32 sp = vr_sqrt(ev.launch_velocity.x * ev.launch_velocity.x + ev.launch_velocity.y * ev.launch_velocity.y
             + ev.launch_velocity.z * ev.launch_velocity.z);
-        vr_launch_v = ev.launch_velocity;
-        if (ev.launch_velocity.y > 0.35f * sp) {
-            // thrown upwards: let the game start a real jump (A), then swap in our speed
-            vr_launch_pending = 6;  // frames to wait for the game's jump to start
+        if (ev.launch_velocity.y > 0.35f * sp && (VR_ACTOR_CONTACT(player) & 1)) {
+            // thrown upwards off the ground (not in the air, where A is Tiny's twirl and the
+            // like): the host presses A so the game plays its jump
+            // (animation, sound, leaves the ground state); the throw's speed stays ours
             vr_launch_count++;
-        } else {
-            // thrown along the ground: the game's own run speed carries it and slows it down
-            f32 scale_y = (player->animation_state != NULL) ? player->animation_state->scale_y : 0.15f;
-            f32 per_frame = 6.0f / (scale_y * 30.0f);
-            f32 vh = vr_sqrt(vr_launch_v.x * vr_launch_v.x + vr_launch_v.z * vr_launch_v.z);
-            player->unkB8 = vh * per_frame;
-            if (vh > 0.01f) {
-                player->unkEE = vr_heading_to_game(vr_atan2(vr_launch_v.x, vr_launch_v.z));
-            }
         }
-        vr_body.launch_speed = vr_sqrt(ev.launch_velocity.x * ev.launch_velocity.x
-            + ev.launch_velocity.y * ev.launch_velocity.y + ev.launch_velocity.z * ev.launch_velocity.z);
-        recomp_printf("[vr-loco] launch %.1f %.1f %.1f\n", ev.launch_velocity.x, ev.launch_velocity.y,
-            ev.launch_velocity.z);
+        vr_flying = 1;
+        vr_fly_frames = 0;
+        vr_fly_state_count = 0;
+        vr_fly_states[vr_fly_state_count++] = player->control_state;
+        vr_body.launch_speed = sp;
+        recomp_printf("[vr-loco] launch %.1f %.1f %.1f (%.2f m/s)\n", ev.launch_velocity.x, ev.launch_velocity.y,
+            ev.launch_velocity.z, sp / vr_hands.world_scale);
+    } else if (vr_flying) {
+        f32 vh2 = vr_loco.velocity.x * vr_loco.velocity.x + vr_loco.velocity.z * vr_loco.velocity.z;
+        f32 stop = VR_FLY_STOP * vr_hands.world_scale;
+        if (vr_loco.hand[0].touching || vr_loco.hand[1].touching) {
+            vr_fly_end("grabbed");
+        } else if (vr_loco.grounded && vr_loco.velocity.y <= 0.0f && vh2 < stop * stop) {
+            vr_fly_end("landed");
+        }
     }
-    if (vr_launch_pending > 0) {
-        vr_launch_pending--;
-        if (player->y_velocity > 0.0f) {
-            // the game has started a jump: give it the throw's speed instead
-            f32 scale_y = (player->animation_state != NULL) ? player->animation_state->scale_y : 0.15f;
-            f32 per_frame = 6.0f / (scale_y * 30.0f);
-            f32 vh = vr_sqrt(vr_launch_v.x * vr_launch_v.x + vr_launch_v.z * vr_launch_v.z);
-            player->y_velocity = vr_launch_v.y * per_frame;
-            player->unkB8 = vh * per_frame;
-            if (vh > 0.01f) {
-                player->unkEE = vr_heading_to_game(vr_atan2(vr_launch_v.x, vr_launch_v.z));
-                player->y_rotation = player->unkEE;
-            }
-            vr_launch_pending = 0;
-            recomp_printf("[vr-loco] jump started, speed set to %.2f up %.2f along\n", player->y_velocity, player->unkB8);
-        }
+    if (vr_flying) {
+        // the movement patch puts the body here; next frame shows what the game did to it
+        vr_fly_expect = vr_loco.body;
     }
     vr_gorilla_gestures(player, &in, dt);
     vr_tag_anywhere(player);
@@ -904,7 +967,7 @@ void vr_gorilla_pre_frame(void) {
     } else {
         vr_air_frames = 0;
     }
-    if (vr_air_frames > 0 && player->y_velocity > -0.01f && player->y_velocity < 0.01f && !vr_launch_pending) {
+    if (vr_air_frames > 0 && player->y_velocity > -0.01f && player->y_velocity < 0.01f && !vr_flying) {
         vr_hang_frames++;
     } else {
         vr_hang_frames = 0;
@@ -942,7 +1005,7 @@ void vr_gorilla_post_frame(void) {
     if (vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
         player = character_change_array[0].playerPointer;
         // face where the head looks, so guns and moves go that way
-        if (vr_body_mode == VR_BODY_ARMS && !vr_launch_pending && player->y_velocity <= 0.0f) {
+        if (vr_body_mode == VR_BODY_ARMS && (vr_flying || player->y_velocity <= 0.0f)) {
             f32 face = vr_hands.head_yaw;
             if (vr_gst_out.aim_valid) {
                 face = vr_gst_out.aim_yaw;   // punches, oranges, the gun face the move
@@ -1008,6 +1071,20 @@ RECOMP_PATCH void func_global_asm_806651FC(Actor *arg0) {
             // held up by the hands, or paddling: the hands are the whole move
             arg0->y_velocity = 0.0f;
             arg0->unkB8 = 0.0f;
+            return;
+        }
+        if (vr_flying) {
+            // a throw: the core's flight is the whole move. Mirror its speed into the game's
+            // fields so the game's air and landing logic, animations and sounds follow along.
+            f32 scale_y = (arg0->animation_state != NULL) ? arg0->animation_state->scale_y : 0.15f;
+            f32 per_frame = 6.0f / (scale_y * 30.0f);
+            f32 vx = vr_loco.velocity.x, vz = vr_loco.velocity.z;
+            f32 vh = vr_sqrt(vx * vx + vz * vz);
+            arg0->y_velocity = vr_loco.velocity.y * per_frame;
+            arg0->unkB8 = vh * per_frame;
+            if (vh > 0.01f) {
+                arg0->unkEE = vr_heading_to_game(vr_atan2(vx, vz));
+            }
             return;
         }
         // nothing held: the tracked head's walk adds to the game's own move (gravity, jumps,
@@ -1197,3 +1274,4 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
     gDPPipeSync(dl++);
     return dl;
 }
+
