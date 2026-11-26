@@ -1702,6 +1702,7 @@ private:
             case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
                 recentrePending = true;
                 dk64vr_logf("recentre: the runtime's reference space changed");
+                floorTracked = false;  // LOCAL moved: find the floor again (standing height until then)
                 break;
             case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
                 dk64vr_logpf("[openxr]", "instance loss pending");
@@ -1849,11 +1850,15 @@ private:
             if (XR_SUCCEEDED(xrLocateSpace(viewSpace, stageSpace, frameState.predictedDisplayTime, &onStage))
                 && (onStage.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
                 const float eyesUp = onStage.pose.position.y;
-                if ((eyesUp > 0.3f) && (eyesUp < 2.5f)) {
-                    floorLocalY = head.pose.position.y - eyesUp;
-                    if (!floorTracked) {
+                // Only a head someone is wearing, standing or crouching a bit: a headset still on
+                // the desk at start-up gave 0.30 m once, and that floor stuck (nothing reachable).
+                if ((eyesUp > 1.0f) && (eyesUp < 2.3f)) {
+                    const float y = head.pose.position.y - eyesUp;
+                    if (!floorTracked || (std::fabs(y - floorLoggedY) > 0.05f)) {
                         dk64vr_logf("floor: tracked, eyes %.2f m above it", eyesUp);
+                        floorLoggedY = y;
                     }
+                    floorLocalY = y;
                     floorTracked = true;
                 }
             }
@@ -3889,6 +3894,7 @@ private:
     int32_t povChoice = -1;               // this cutscene's view: -1 default, 0 third, 1 first
     bool povClickHeld = false;
     float floorLocalY = 0.0f;             // the floor's height in LOCAL space, metres
+    float floorLoggedY = 0.0f;
     std::atomic<bool> sessionRunning = false;
     bool sessionFailed = false;
     std::atomic<bool> exitRequested = false;
