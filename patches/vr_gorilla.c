@@ -1279,26 +1279,28 @@ extern u8 skip_persp_interp;
 
 #define VR_HAND_UNIT 100.0f
 
-static Vtx vr_hand_vtx[2][2][8];
-static Mtx vr_hand_mtx[2][2];
-static Vtx vr_arm_vtx[2][2][8];
-static Mtx vr_arm_mtx[2][2];
+// Up to this many boxes a frame (two per arm, three per hand), double-buffered with the game's
+// display lists.
+#define VR_BOXES 12
+static Vtx vr_box_vtx[2][VR_BOXES][8];
+static Mtx vr_box_mtx[2][VR_BOXES];
 
-// Arm fur, per Kong: the arms reach from the shoulders to the hands (stuck ones too).
+// Arm fur, per Kong.
 static const u32 vr_arm_colours[5] = {
-    0x7A4A22FF, // DK brown
-    0x8A5A30FF, // Diddy
-    0x9A6030FF, // Lanky
-    0xB08048FF, // Tiny
-    0x60401EFF, // Chunky
+    0x6A3E1CFF, // DK brown
+    0x7A4E2AFF, // Diddy
+    0x8A5428FF, // Lanky
+    0xA87440FF, // Tiny
+    0x553618FF, // Chunky
 };
 
-static const u32 vr_kong_colours[5] = {
-    0xF0C820FF, // DK yellow
-    0xE03028FF, // Diddy red
-    0x3060E0FF, // Lanky blue
-    0x9040D0FF, // Tiny purple
-    0x30B040FF, // Chunky green
+// Hand skin, per Kong (light, like the Kongs' palms).
+static const u32 vr_skin_colours[5] = {
+    0xE0B080FF, // DK
+    0xE8B888FF, // Diddy
+    0xE0A878FF, // Lanky
+    0xF0C098FF, // Tiny
+    0xD8A070FF, // Chunky
 };
 
 static void vr_hand_box(Vtx *v, u32 rgba, s32 bright) {
@@ -1331,10 +1333,74 @@ static void vr_hand_box(Vtx *v, u32 rgba, s32 bright) {
     }
 }
 
+static gtl_vec3 vr_v3(f32 x, f32 y, f32 z) {
+    gtl_vec3 v;
+    v.x = x; v.y = y; v.z = z;
+    return v;
+}
+static gtl_vec3 vr_v3add(gtl_vec3 a, gtl_vec3 b) { return vr_v3(a.x + b.x, a.y + b.y, a.z + b.z); }
+static gtl_vec3 vr_v3sub(gtl_vec3 a, gtl_vec3 b) { return vr_v3(a.x - b.x, a.y - b.y, a.z - b.z); }
+static gtl_vec3 vr_v3mul(gtl_vec3 a, f32 k) { return vr_v3(a.x * k, a.y * k, a.z * k); }
+static f32 vr_v3dot(gtl_vec3 a, gtl_vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+static gtl_vec3 vr_v3cross(gtl_vec3 a, gtl_vec3 b) {
+    return vr_v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+}
+static f32 vr_v3len(gtl_vec3 a) { return vr_sqrt(vr_v3dot(a, a)); }
+static gtl_vec3 vr_v3norm(gtl_vec3 a, gtl_vec3 fallback) {
+    f32 l = vr_v3len(a);
+    return (l > 1e-4f) ? vr_v3mul(a, 1.0f / l) : fallback;
+}
+
+// One box: centre c, half-extent axes ax, ay, az (right-handed, any lengths).
+static Gfx *vr_draw_box(Gfx *dl, s32 buf, s32 *n, u32 rgba, s32 bright, gtl_vec3 c, gtl_vec3 ax, gtl_vec3 ay, gtl_vec3 az) {
+    f32 m[4][4];
+    Vtx *v;
+    Mtx *mx;
+    if (*n >= VR_BOXES) {
+        return dl;
+    }
+    v = vr_box_vtx[buf][*n];
+    mx = &vr_box_mtx[buf][*n];
+    (*n)++;
+    vr_hand_box(v, rgba, bright);   // a cube of +-VR_HAND_UNIT, y squashed by 0.8
+    m[0][0] = ax.x / VR_HAND_UNIT; m[0][1] = ax.y / VR_HAND_UNIT; m[0][2] = ax.z / VR_HAND_UNIT; m[0][3] = 0.0f;
+    m[1][0] = ay.x / (0.8f * VR_HAND_UNIT); m[1][1] = ay.y / (0.8f * VR_HAND_UNIT); m[1][2] = ay.z / (0.8f * VR_HAND_UNIT); m[1][3] = 0.0f;
+    m[2][0] = az.x / VR_HAND_UNIT; m[2][1] = az.y / VR_HAND_UNIT; m[2][2] = az.z / VR_HAND_UNIT; m[2][3] = 0.0f;
+    m[3][0] = c.x; m[3][1] = c.y; m[3][2] = c.z; m[3][3] = 1.0f;
+    guMtxF2L(m, mx);
+    gSPMatrix(dl++, osVirtualToPhysical(mx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    gSPVertex(dl++, osVirtualToPhysical(v), 8, 0);
+    gSP2Triangles(dl++, 0, 2, 1, 0, 0, 3, 2, 0);
+    gSP2Triangles(dl++, 4, 5, 6, 0, 4, 6, 7, 0);
+    gSP2Triangles(dl++, 0, 1, 5, 0, 0, 5, 4, 0);
+    gSP2Triangles(dl++, 3, 7, 6, 0, 3, 6, 2, 0);
+    gSP2Triangles(dl++, 0, 4, 7, 0, 0, 7, 3, 0);
+    gSP2Triangles(dl++, 1, 2, 6, 0, 1, 6, 5, 0);
+    return dl;
+}
+
+// A limb from a to b, thickness t (half), with `side` as its sideways axis.
+static Gfx *vr_draw_limb(Gfx *dl, s32 buf, s32 *n, u32 rgba, gtl_vec3 a, gtl_vec3 b, f32 t, gtl_vec3 side) {
+    gtl_vec3 d = vr_v3sub(b, a);
+    f32 len = vr_v3len(d);
+    gtl_vec3 z, x, y;
+    if (len < 0.2f) {
+        return dl;
+    }
+    z = vr_v3mul(d, 1.0f / len);
+    x = vr_v3norm(vr_v3sub(side, vr_v3mul(z, vr_v3dot(side, z))), vr_v3(1.0f, 0.0f, 0.0f));
+    y = vr_v3cross(z, x);
+    return vr_draw_box(dl, buf, n, rgba, 0, vr_v3mul(vr_v3add(a, b), 0.5f), vr_v3mul(x, t), vr_v3mul(y, t), vr_v3mul(z, len * 0.5f + t * 0.3f));
+}
+
+// Gorilla Tag-style arms: shoulder, elbow (bent out and down, two-bone reach), hand. The hand is a
+// palm with fingers and a thumb, turned with the controller's aim; it brightens on a surface.
 Gfx *vr_gorilla_draw_hands(Gfx *dl) {
     CharacterChange *cc;
-    s32 buf, h, k;
-    f32 size;
+    s32 buf, h, k, n = 0;
+    f32 ws = vr_ws, hr = vr_params.hand_radius;
+    f32 yaw = vr_yaw + vr_hands.head_yaw;
+    gtl_vec3 right, fwd, up = vr_v3(0.0f, 1.0f, 0.0f);
 
     if (!vr_active || character_change_array == NULL) {
         return dl;
@@ -1345,7 +1411,9 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
     if (k < 0 || k > 4) {
         k = 0;
     }
-    size = vr_params.hand_radius * 1.1f;
+    // the head's facing, flat (game convention: forward = (sin, cos), right = (-cos, sin))
+    fwd = vr_v3(vr_sin(yaw), 0.0f, vr_cos(yaw));
+    right = vr_v3(-vr_cos(yaw), 0.0f, vr_sin(yaw));
 
     gDPPipeSync(dl++);
     gDPSetCycleType(dl++, G_CYC_1CYCLE);
@@ -1362,70 +1430,44 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
     gSPMatrix(dl++, osVirtualToPhysical(&cc->unk8[buf]), G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
 
     for (h = 0; h < 2; h++) {
-        // the arm: a beam from the shoulder (below and beside the head, facing where the head
-        // faces) to the hand
-        f32 m[4][4];
-        f32 yaw = vr_yaw + vr_hands.head_yaw;
-        f32 sy = vr_sin(yaw), cy = vr_cos(yaw);
-        f32 ws = vr_ws;
         f32 side = (h == 0) ? -1.0f : 1.0f;
-        gtl_vec3 sh, z, x, y;
-        f32 len, l, thick = vr_params.hand_radius * 0.75f;
-        Vtx *av = vr_arm_vtx[buf][h];
-        sh.x = vr_loco.body.x + (-cy) * side * 0.17f * ws;
-        sh.y = vr_loco.body.y + vr_params.head_height - 0.22f * ws;
-        sh.z = vr_loco.body.z + sy * side * 0.17f * ws;
-        z.x = vr_loco.hand[h].pos.x - sh.x;
-        z.y = vr_loco.hand[h].pos.y - sh.y;
-        z.z = vr_loco.hand[h].pos.z - sh.z;
-        len = vr_sqrt(z.x * z.x + z.y * z.y + z.z * z.z);
-        if (len > 0.5f) {
-            z.x /= len; z.y /= len; z.z /= len;
-            // x = up x z, then y = z x x
-            x.x = z.z; x.y = 0.0f; x.z = -z.x;
-            l = vr_sqrt(x.x * x.x + x.z * x.z);
-            if (l < 1e-3f) {
-                x.x = 1.0f; x.z = 0.0f; l = 1.0f;
-            }
-            x.x /= l; x.z /= l;
-            y.x = z.y * x.z - z.z * x.y;
-            y.y = z.z * x.x - z.x * x.z;
-            y.z = z.x * x.y - z.y * x.x;
-            vr_hand_box(av, vr_arm_colours[k], 0);
-            m[0][0] = x.x * thick / VR_HAND_UNIT; m[0][1] = x.y * thick / VR_HAND_UNIT; m[0][2] = x.z * thick / VR_HAND_UNIT; m[0][3] = 0.0f;
-            m[1][0] = y.x * thick / (0.8f * VR_HAND_UNIT); m[1][1] = y.y * thick / (0.8f * VR_HAND_UNIT); m[1][2] = y.z * thick / (0.8f * VR_HAND_UNIT); m[1][3] = 0.0f;
-            m[2][0] = z.x * len * 0.5f / VR_HAND_UNIT; m[2][1] = z.y * len * 0.5f / VR_HAND_UNIT; m[2][2] = z.z * len * 0.5f / VR_HAND_UNIT; m[2][3] = 0.0f;
-            m[3][0] = sh.x + z.x * len * 0.5f; m[3][1] = sh.y + z.y * len * 0.5f; m[3][2] = sh.z + z.z * len * 0.5f; m[3][3] = 1.0f;
-            guMtxF2L(m, &vr_arm_mtx[buf][h]);
-            gSPMatrix(dl++, osVirtualToPhysical(&vr_arm_mtx[buf][h]), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-            gSPVertex(dl++, osVirtualToPhysical(av), 8, 0);
-            gSP2Triangles(dl++, 0, 2, 1, 0, 0, 3, 2, 0);
-            gSP2Triangles(dl++, 4, 5, 6, 0, 4, 6, 7, 0);
-            gSP2Triangles(dl++, 0, 1, 5, 0, 0, 5, 4, 0);
-            gSP2Triangles(dl++, 3, 7, 6, 0, 3, 6, 2, 0);
-            gSP2Triangles(dl++, 0, 4, 7, 0, 0, 7, 3, 0);
-            gSP2Triangles(dl++, 1, 2, 6, 0, 1, 6, 5, 0);
-        }
-    }
-    for (h = 0; h < 2; h++) {
-        f32 m[4][4];
-        f32 s = size / VR_HAND_UNIT;
-        Vtx *v = vr_hand_vtx[buf][h];
-        vr_hand_box(v, vr_kong_colours[k], vr_loco.hand[h].touching);
-        guScaleF(m, s, s, s);
-        m[3][0] = vr_loco.hand[h].pos.x;
-        m[3][1] = vr_loco.hand[h].pos.y;
-        m[3][2] = vr_loco.hand[h].pos.z;
-        guMtxF2L(m, &vr_hand_mtx[buf][h]);
-        gSPMatrix(dl++, osVirtualToPhysical(&vr_hand_mtx[buf][h]), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-        gSPVertex(dl++, osVirtualToPhysical(v), 8, 0);
-        // six faces, outward winding
-        gSP2Triangles(dl++, 0, 2, 1, 0, 0, 3, 2, 0);   // -z
-        gSP2Triangles(dl++, 4, 5, 6, 0, 4, 6, 7, 0);   // +z
-        gSP2Triangles(dl++, 0, 1, 5, 0, 0, 5, 4, 0);   // -y
-        gSP2Triangles(dl++, 3, 7, 6, 0, 3, 6, 2, 0);   // +y
-        gSP2Triangles(dl++, 0, 4, 7, 0, 0, 7, 3, 0);   // -x
-        gSP2Triangles(dl++, 1, 2, 6, 0, 1, 6, 5, 0);   // +x
+        gtl_vec3 head = vr_v3add(vr_loco.body, vr_v3(0.0f, vr_params.head_height + vr_loco.last_head.y, 0.0f));
+        gtl_vec3 sh = vr_v3add(vr_v3add(head, vr_v3mul(right, side * 0.18f * ws)), vr_v3(0.0f, -0.24f * ws, 0.0f));
+        gtl_vec3 hand = vr_loco.hand[h].pos;
+        gtl_vec3 d = vr_v3sub(hand, sh);
+        f32 dist = vr_v3len(d);
+        f32 seg = 0.36f * ws * vr_hands.arm_scale;   // upper arm = forearm
+        gtl_vec3 dir = vr_v3norm(d, vr_v3mul(up, -1.0f));
+        gtl_vec3 bend, elbow, aim, palm_up, palm_side;
+        f32 reach, out;
+        u32 fur = vr_arm_colours[k], skin = vr_skin_colours[k];
+        s32 on = vr_loco.hand[h].touching;
+
+        // elbow: halfway, pushed out sideways and down by what the two bones have left over
+        reach = dist * 0.5f;
+        out = (reach < seg) ? vr_sqrt(seg * seg - reach * reach) : 0.0f;
+        bend = vr_v3add(vr_v3mul(right, side), vr_v3mul(up, -0.6f));
+        bend = vr_v3norm(vr_v3sub(bend, vr_v3mul(dir, vr_v3dot(bend, dir))), right);
+        elbow = vr_v3add(vr_v3add(sh, vr_v3mul(d, 0.5f)), vr_v3mul(bend, out));
+
+        dl = vr_draw_limb(dl, buf, &n, fur, sh, elbow, hr * 0.95f, right);
+        dl = vr_draw_limb(dl, buf, &n, fur, elbow, hand, hr * 0.8f, right);
+
+        // the hand: forward along the controller's aim, palm down-ish
+        aim = vr_v3norm(vr_play_to_world(vr_hands.hand_dir[h], 1.0f), fwd);
+        palm_side = vr_v3norm(vr_v3cross(up, aim), vr_v3mul(right, -1.0f));   // the hand's left
+        palm_up = vr_v3cross(aim, palm_side);
+        // palm
+        dl = vr_draw_box(dl, buf, &n, skin, on, hand, vr_v3mul(palm_side, hr * 1.0f), vr_v3mul(palm_up, hr * 0.45f),
+            vr_v3mul(aim, hr * 0.9f));
+        // fingers, curled forward and a little down
+        dl = vr_draw_box(dl, buf, &n, skin, on,
+            vr_v3add(vr_v3add(hand, vr_v3mul(aim, hr * 1.55f)), vr_v3mul(palm_up, -hr * 0.25f)),
+            vr_v3mul(palm_side, hr * 0.95f), vr_v3mul(palm_up, hr * 0.35f), vr_v3mul(aim, hr * 0.6f));
+        // thumb, on the inner side (palm_side points to the hand's left)
+        dl = vr_draw_box(dl, buf, &n, skin, on,
+            vr_v3add(vr_v3add(hand, vr_v3mul(palm_side, side * hr * 1.15f)), vr_v3mul(aim, hr * 0.5f)),
+            vr_v3mul(palm_side, hr * 0.3f), vr_v3mul(palm_up, hr * 0.3f), vr_v3mul(aim, hr * 0.55f));
     }
     gDPPipeSync(dl++);
     return dl;
