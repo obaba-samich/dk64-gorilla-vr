@@ -9,7 +9,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 
 | Test | How | Status |
 |---|---|---|
-| Locomotion core: 27 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
+| Locomotion core: 28 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
 | Gestures: 24 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr), plus the arm-mode stick routing (turn and C-up / C-down on the left stick while the right one does abilities) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
@@ -47,7 +47,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Body follows DK, first-person camera | 🧪 | DK Isles |
 | Own model hidden | 🧪 | eye dumps |
 | Hands drawn in Kong colours | 🧪 | visible at the frame edge in dumps |
-| Arms drawn from the shoulders | 🧪 | eye dumps during the punch routine: fur arm to the hand (2026-11-25) |
+| Arms with elbows, hands with fingers and thumb (D37) | 🧪 | eye dumps during the punch routine (2026-11-26) |
+| Head moves inside the body (D37) | ✅ unit test | head bobbing leaves the body still; crouching puts the hands on the floor |
 | Real floor from the STAGE space, world sized to your eye height (D34) | 🧪 | `floor: tracked, eyes 1.62 m above it`; scale 12.9 units/m for DK |
 | Rowing along the floor moves DK | 🧪 | after D34: ~900 units in under a minute of synthetic strokes, 62 throws, 117 contacts. Before D34: ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
 | Falling off ledges uses DK64 gravity | 🧪 | treehouse ledge |

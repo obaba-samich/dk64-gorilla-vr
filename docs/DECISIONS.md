@@ -264,3 +264,18 @@ start in first person (`cutscene_pov`, on), everything else in third. First pers
 the Kong faced when the cutscene began and doesn't follow its turns or the game's camera cuts,
 so nothing turns you; the eye point follows the Kong as it walks. The player model is hidden as
 in play. Seen in the simulator: Funky's entrance cutscene from DK's eyes.
+
+### D37. The head moves inside the body; arms with elbows and hands
+Third headset test: "I can't even touch the ground; the arms don't look like a Gorilla Tag
+player". Three causes:
+- The floor came from a STAGE reading taken while the headset was still on the desk (0.30 m)
+  and stayed after the runtime reset its reference space. Readings now only count for a worn
+  headset (eyes 1.0-2.3 m above the floor) and are taken again after every reset.
+- Head ups and downs moved the body: up lifted it off the floor (the game dropped it again,
+  jitter), down was blocked by the floor, so crouching never brought the hands lower. As in
+  Gorilla Tag the head now moves inside the body: only room-scale walking moves it, and the hands
+  hang from the real head height.
+- The arms were one beam and the hands one box. Now each arm is an upper arm and forearm with an
+  elbow bent out and down (two equal bones, 0.36 m each times the arm length), and the hand is a
+  palm, fingers and a thumb, turned with the controller's aim. Fur and skin colours per Kong.
+  Gorilla Tag's own model isn't ours to copy; these are boxes in the same spirit.
