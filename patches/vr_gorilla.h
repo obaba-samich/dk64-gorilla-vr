@@ -32,6 +32,8 @@ typedef struct VrHands {
     s32 warp_map;
     s32 warp_exit;
     s32 unlock_req;
+    f32 floor_y;
+    s32 match_height;
 } VrHands;
 
 typedef struct VrBody {
@@ -51,6 +53,7 @@ typedef struct VrBody {
     s32 gun_out;
     s32 stick_free;
     s32 mode;
+    f32 world_scale;
 } VrBody;
 
 #define VR_BODY_OFF 0

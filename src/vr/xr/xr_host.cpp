@@ -787,7 +787,8 @@ public:
         const float yaw = prev.yaw + wrapAngle(body.yaw - prev.yaw) * w;
         const Vec3 at { head.x + std::sin(yaw), head.y, head.z + std::cos(yaw) };
         const Mat4 view = guLookAt(head, at, Vec3 { 0.0f, 1.0f, 0.0f });
-        const float scale = float(setting("gorilla_world_scale"));
+        // the scale the game used (it matches your eye height to the Kong's by default)
+        const float scale = (body.world_scale > 0.0f) ? body.world_scale : float(setting("gorilla_world_scale"));
 
         fromMat4(eyeView(view, eyeInHead[eye], scale), outView);
         billboardPoint = dk64vr::billboardViewpoint(view, eyeInHead[0], eyeInHead[1], scale);
@@ -1498,6 +1499,13 @@ private:
         xrCreateReferenceSpace(session, &spaceInfo, &localSpace);
         spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
         xrCreateReferenceSpace(session, &spaceInfo, &viewSpace);
+        // The room's floor (y = 0 on the floor), for arm locomotion: the game's floor goes where
+        // the real one is, as in Gorilla Tag. Not every runtime has one.
+        spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        if (XR_FAILED(xrCreateReferenceSpace(session, &spaceInfo, &stageSpace))) {
+            stageSpace = XR_NULL_HANDLE;
+            dk64vr_logf("floor: no STAGE space; assuming eyes %.2f m up (standing_eye_height)", setting("standing_eye_height"));
+        }
 
         uint32_t viewCount = 0;
         xrEnumerateViewConfigurationViews(instance, systemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &viewCount, nullptr);
@@ -1665,7 +1673,12 @@ private:
             xrDestroySpace(viewSpace);
         }
 
-        localSpace = viewSpace = XR_NULL_HANDLE;
+        if (stageSpace != XR_NULL_HANDLE) {
+            xrDestroySpace(stageSpace);
+        }
+
+        localSpace = viewSpace = stageSpace = XR_NULL_HANDLE;
+        floorTracked = false;
         xrDestroySession(session);
         session = XR_NULL_HANDLE;
         sessionRunning = false;
@@ -1826,6 +1839,20 @@ private:
         const bool viewsValid = (count == 2) && ((viewState.viewStateFlags & needed) == needed);
         const bool headValid = (head.locationFlags & (XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT)) == (XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT);
         runtimeEyesValid = XR_SUCCEEDED(viewResult) && viewsValid && headValid;
+        if (headValid && (stageSpace != XR_NULL_HANDLE)) {
+            XrSpaceLocation onStage = { XR_TYPE_SPACE_LOCATION };
+            if (XR_SUCCEEDED(xrLocateSpace(viewSpace, stageSpace, frameState.predictedDisplayTime, &onStage))
+                && (onStage.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
+                const float eyesUp = onStage.pose.position.y;
+                if ((eyesUp > 0.3f) && (eyesUp < 2.5f)) {
+                    floorLocalY = head.pose.position.y - eyesUp;
+                    if (!floorTracked) {
+                        dk64vr_logf("floor: tracked, eyes %.2f m above it", eyesUp);
+                    }
+                    floorTracked = true;
+                }
+            }
+        }
 
         // FOV from the runtime; the Frame's measured left-eye FOV (platform.md) when it gives none.
         for (uint32_t eye = 0; eye < 2; eye++) {
@@ -2397,6 +2424,10 @@ private:
             z = -0.6f + 0.15f * u;
             y = -0.3f - 0.65f * u;
         }
+        // the strokes were written for a floor 0.81 m under the eyes; move them to the real one
+        const float floorRel = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y - h.head[1])
+                                                                          : (-float(setting("standing_eye_height")) - h.head[1]);
+        y += floorRel + 0.81f;
         for (int i = 0; i < 2; i++) {
             h.hand[i][0] = h.head[0] + (i == 0 ? -0.25f : 0.25f);
             h.hand[i][1] = h.head[1] + y;
@@ -2531,6 +2562,11 @@ private:
             }
         }
         h.world_scale = float(setting("gorilla_world_scale"));
+        h.match_height = (setting("match_height") != 0.0) ? 1 : 0;
+        // the real floor in the play space (origin = the head at the last recentre); without a
+        // tracked floor, or seated, assume the recentre happened standing
+        h.floor_y = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y)
+                                                                 : -float(setting("standing_eye_height"));
         h.arm_scale = float(setting("arm_scale"));
         h.jump_multiplier = float(setting("jump_multiplier"));
         h.max_jump_speed = float(setting("max_jump_speed"));
@@ -3824,6 +3860,9 @@ private:
     XrSession session = XR_NULL_HANDLE;
     XrSpace localSpace = XR_NULL_HANDLE;
     XrSpace viewSpace = XR_NULL_HANDLE;
+    XrSpace stageSpace = XR_NULL_HANDLE;  // the room's floor, where the runtime has one
+    bool floorTracked = false;
+    float floorLocalY = 0.0f;             // the floor's height in LOCAL space, metres
     std::atomic<bool> sessionRunning = false;
     bool sessionFailed = false;
     std::atomic<bool> exitRequested = false;

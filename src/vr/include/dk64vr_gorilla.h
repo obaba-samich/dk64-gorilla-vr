@@ -51,6 +51,9 @@ typedef struct dk64vr_hands {
     int32_t warp_map;        // ...to this map
     int32_t warp_exit;       // ...and exit
     int32_t unlock_req;      // Testing tab: unlock everything each time this counter changes
+    float floor_y;           // the real floor's height in the play space (metres, so usually
+                             // minus your eye height): the game's floor goes there
+    int32_t match_height;    // size the world so your eye height is the Kong's (else world_scale)
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.
@@ -71,6 +74,7 @@ typedef struct dk64vr_body {
     int32_t gun_out;
     int32_t stick_free;      // long in the air (Rocketbarrel, glides): the left stick steers
     int32_t mode;            // DK64VR_BODY_* below, for the log and the HUD
+    float world_scale;       // game units per metre the game used this frame (camera, hands)
 } dk64vr_body;
 
 enum {

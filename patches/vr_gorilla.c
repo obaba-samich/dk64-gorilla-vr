@@ -284,7 +284,8 @@ static s32 vr_active;              // arm locomotion drove the player this frame
 static s32 vr_hide_body = 1;       // first person: don't draw the player's own model
 static s32 vr_in_water;
 static f32 vr_yaw;                 // body heading (radians, game convention)
-static f32 vr_height;              // head above the feet, world units (per Kong)
+static f32 vr_height;              // eyes above the feet at the recentre pose, world units
+static f32 vr_ws = 26.0f;          // game units per metre this frame (see vr_setup_params)
 static s32 vr_initialised;
 static Actor *vr_player_seen;
 static u32 vr_frame;
@@ -467,22 +468,43 @@ static void vr_setup_params(Actor *player) {
     gtl_default_params(&vr_params);
     vr_params.body_radius = kb->radius * scale;
     vr_params.hand_radius = 1.2f * scale;
-    vr_height = kb->height * scale;
+    {
+        // As in Gorilla Tag the game's floor is the real floor: your eyes are as far above the
+        // Kong's feet as they are above your own. By default the world is sized so that's the
+        // Kong's own eye height (you're the Kong's size); otherwise world_scale fixes it.
+        f32 standing = -vr_hands.floor_y;   // eyes above the floor at the recentre, metres
+        if (!(standing > 0.8f)) {
+            standing = 0.8f;
+        }
+        if (standing > 2.3f) {
+            standing = 2.3f;
+        }
+        vr_ws = vr_hands.match_height ? (kb->height * scale / standing) : vr_hands.world_scale;
+        if (!(vr_ws > 1.0f)) {
+            vr_ws = 1.0f;
+        }
+        vr_height = standing * vr_ws;
+    }
     vr_params.head_height = vr_height - vr_params.body_radius;
-    vr_params.arm_length = 0.9f * vr_hands.world_scale * vr_hands.arm_scale * kb->arm;
+    // GorillaLocomotion's own numbers (its Gorilla Rig prefab): 1.5 m of arm, 0.4 m/s before a
+    // push throws you, 1 m before a stuck hand lets go, 8 frames of velocity history at ~90 Hz
+    // (3 at the game's 30 Hz); the multiplier and cap are the jump_multiplier and
+    // max_jump_speed settings (1.1, 6.5 m/s)
+    vr_params.arm_length = 1.5f * vr_ws * vr_hands.arm_scale * kb->arm;
     vr_params.jump_multiplier = vr_hands.jump_multiplier * kb->launch;
-    vr_params.max_jump_speed = vr_hands.max_jump_speed * vr_hands.world_scale;
-    vr_params.min_launch_speed = 0.8f * vr_hands.world_scale;
-    vr_params.unstick_distance = 0.2f * vr_hands.world_scale;
+    vr_params.max_jump_speed = vr_hands.max_jump_speed * vr_ws;
+    vr_params.min_launch_speed = 0.4f * vr_ws;
+    vr_params.unstick_distance = 1.0f * vr_ws;
+    vr_params.history_frames = 3;
     vr_params.gravity = 0.0f;  // the game's own
     vr_sweep_ctx.player = player;
     vr_sweep_ctx.wall_window = 26.0f;  // game units: steps up to about DK's height are walls
 }
 
 static void vr_build_input(gtl_input *in, f32 dt) {
-    f32 k = vr_hands.world_scale * vr_hands.arm_scale;
+    f32 k = vr_ws * vr_hands.arm_scale;
     s32 h;
-    in->head = vr_play_to_world(vr_hands.head, vr_hands.world_scale);
+    in->head = vr_play_to_world(vr_hands.head, vr_ws);
     for (h = 0; h < 2; h++) {
         // the hand's offset from the head gets the arm scale, the head itself does not
         f32 rel[3];
@@ -936,8 +958,8 @@ void vr_gorilla_pre_frame(void) {
     if (vr_flying) {
         // the core flies the body: its own gravity, sliding and sweeps against the floors
         in.external_flight = 0;
-        vr_params.gravity = VR_FLY_GRAVITY * vr_hands.world_scale;
-        vr_params.terminal_velocity = 30.0f * vr_hands.world_scale;
+        vr_params.gravity = VR_FLY_GRAVITY * vr_ws;
+        vr_params.terminal_velocity = 30.0f * vr_ws;
         vr_params.ground_friction = 4.0f;
     }
     gtl_step(&vr_loco, &vr_params, &vr_world, &in, &ev);
@@ -970,10 +992,10 @@ void vr_gorilla_pre_frame(void) {
         vr_fly_states[vr_fly_state_count++] = player->control_state;
         vr_body.launch_speed = sp;
         recomp_printf("[vr-loco] launch %.1f %.1f %.1f (%.2f m/s)\n", ev.launch_velocity.x, ev.launch_velocity.y,
-            ev.launch_velocity.z, sp / vr_hands.world_scale);
+            ev.launch_velocity.z, sp / vr_ws);
     } else if (vr_flying) {
         f32 vh2 = vr_loco.velocity.x * vr_loco.velocity.x + vr_loco.velocity.z * vr_loco.velocity.z;
-        f32 stop = VR_FLY_STOP * vr_hands.world_scale;
+        f32 stop = VR_FLY_STOP * vr_ws;
         if (vr_loco.hand[0].touching || vr_loco.hand[1].touching) {
             vr_fly_end("grabbed");
         } else if (vr_loco.grounded && vr_loco.velocity.y <= 0.0f && vh2 < stop * stop) {
@@ -1009,7 +1031,7 @@ void vr_gorilla_pre_frame(void) {
                 vr_body.haptic[h] = 60;
             }
             if (ev.hand_contact[h]) {
-                f32 strength = ev.contact_speed[h] / (2.0f * vr_hands.world_scale);
+                f32 strength = ev.contact_speed[h] / (2.0f * vr_ws);
                 vr_body.haptic[h] = (s32)(20.0f + 80.0f * (strength > 1.0f ? 1.0f : strength));
                 recomp_printf("[vr-loco] hand %d on surface %d\n", h, vr_loco.hand[h].surface);
             }
@@ -1043,12 +1065,13 @@ void vr_gorilla_post_frame(void) {
         // the body already moved with the tracked head (room scale); the host adds the live
         // head offset at display rate, so take this frame's offset back out
         {
-            gtl_vec3 off = vr_play_to_world(vr_hands.head, vr_hands.world_scale);
+            gtl_vec3 off = vr_play_to_world(vr_hands.head, vr_ws);
             vr_body.head[0] = player->x_position - off.x;
             vr_body.head[1] = player->y_position + vr_height - off.y;
             vr_body.head[2] = player->z_position - off.z;
         }
         vr_body.yaw = vr_yaw;
+        vr_body.world_scale = vr_ws;
         for (h = 0; h < 2; h++) {
             vr_body.hand[h][0] = vr_loco.hand[h].pos.x;
             vr_body.hand[h][1] = vr_loco.hand[h].pos.y;
@@ -1292,7 +1315,7 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
         f32 m[4][4];
         f32 yaw = vr_yaw + vr_hands.head_yaw;
         f32 sy = vr_sin(yaw), cy = vr_cos(yaw);
-        f32 ws = vr_hands.world_scale;
+        f32 ws = vr_ws;
         f32 side = (h == 0) ? -1.0f : 1.0f;
         gtl_vec3 sh, z, x, y;
         f32 len, l, thick = vr_params.hand_radius * 0.75f;

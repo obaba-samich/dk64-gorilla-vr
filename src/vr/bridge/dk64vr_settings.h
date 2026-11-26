@@ -19,7 +19,7 @@ extern "C" {
 // variables DK64_VR_<KEY> override the file for the run and are never
 // written back.
 
-#define DK64VR_SETTINGS_MAX_KEYS 96
+#define DK64VR_SETTINGS_MAX_KEYS 128
 
 // resolution_scale = "auto": an absolute eye size (dk64vr::eyeSize), stored as this value.
 #define DK64VR_RESOLUTION_AUTO 0.0
