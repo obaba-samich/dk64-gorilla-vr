@@ -55,6 +55,8 @@ typedef struct dk64vr_hands {
                              // minus your eye height): the game's floor goes there
     int32_t match_height;    // size the world so your eye height is the Kong's (else world_scale)
     int32_t hide_cutscene_bars; // immersive cutscenes: no letterbox bars stuck to your view
+    int32_t cutscene_pov;    // shops' cutscenes start in first person (the Kong's eyes)
+    int32_t pov_choice;      // this cutscene: -1 its default, 0 third person, 1 first person
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.
@@ -83,7 +85,8 @@ enum {
     DK64VR_BODY_ARMS = 1,         // arm locomotion, first person
     DK64VR_BODY_THIRD_PERSON = 2, // vehicles, animal buddies, scripted moves (blasts, cutscenes)
     DK64VR_BODY_BARREL = 3,       // inside a Tag Barrel: lean to turn it
-    DK64VR_BODY_CLIMB = 4         // on a tree, ladder or vine: first person, hands climb
+    DK64VR_BODY_CLIMB = 4,        // on a tree, ladder or vine: first person, hands climb
+    DK64VR_BODY_POV = 5           // a cutscene seen through the Kong's eyes (head valid, not driven)
 };
 
 void dk64vr_publish_hands(const dk64vr_hands *hands);

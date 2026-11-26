@@ -35,6 +35,8 @@ typedef struct VrHands {
     f32 floor_y;
     s32 match_height;
     s32 hide_cutscene_bars;
+    s32 cutscene_pov;
+    s32 pov_choice;
 } VrHands;
 
 typedef struct VrBody {
@@ -62,6 +64,7 @@ typedef struct VrBody {
 #define VR_BODY_THIRD_PERSON 2
 #define VR_BODY_BARREL 3
 #define VR_BODY_CLIMB 4
+#define VR_BODY_POV 5
 
 #define VR_BTN_A (1 << 0)
 #define VR_BTN_B (1 << 1)

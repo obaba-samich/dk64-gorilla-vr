@@ -332,6 +332,9 @@ public:
         if (!recompinput::game_input_disabled()) {
             mergeN64(*buttons, *x, *y, vr);
         }
+        if ((gameState().scene == DK64VR_SCENE_CUTSCENE) && (int(setting("cutscenes")) == 1)) {
+            *buttons &= uint16_t(~n64::L);  // the right stick click switches the cutscene's view
+        }
 
         const double now = monotonicSeconds();
 
@@ -773,12 +776,14 @@ public:
         dk64vr_body prev, body;
         dk64vr_get_bodies(&prev, &body);
         const dk64vr_game_state state = gameState();
-        if (!body.active || ((state.scene != DK64VR_SCENE_GAMEPLAY) && (state.scene != DK64VR_SCENE_FIRST_PERSON))) {
+        const bool pov = (body.mode == DK64VR_BODY_POV) && (state.scene == DK64VR_SCENE_CUTSCENE) && !cinemaActive;
+        if (!pov && (!body.active || ((state.scene != DK64VR_SCENE_GAMEPLAY) && (state.scene != DK64VR_SCENE_FIRST_PERSON)))) {
             return false;
         }
 
         // Between the last two game frames, by the same weight the rest of the frame uses.
-        const float w = (prev.active && (prev.frame + 1 == body.frame)) ? scheduler.weight(displayS) : 1.0f;
+        const bool prevValid = prev.active || (prev.mode == DK64VR_BODY_POV);
+        const float w = (prevValid && (prev.frame + 1 == body.frame)) ? scheduler.weight(displayS) : 1.0f;
         const Vec3 head {
             prev.head[0] + (body.head[0] - prev.head[0]) * w,
             prev.head[1] + (body.head[1] - prev.head[1]) * w,
@@ -2564,6 +2569,24 @@ private:
         h.world_scale = float(setting("gorilla_world_scale"));
         h.match_height = (setting("match_height") != 0.0) ? 1 : 0;
         h.hide_cutscene_bars = (int(setting("cutscenes")) == 1) ? 1 : 0;  // immersive
+        h.cutscene_pov = (setting("cutscene_pov") != 0.0) ? 1 : 0;
+        {
+            // Immersive cutscenes: a right stick click switches between the game's camera and
+            // the Kong's eyes. The choice lasts until the cutscene is over.
+            const int32_t scene = gameState().scene;
+            if ((scene != DK64VR_SCENE_CUTSCENE) && (scene != DK64VR_SCENE_TRANSITION) && (scene != DK64VR_SCENE_PAUSE)) {
+                povChoice = -1;
+            }
+            const bool click = s.valid && s.rStickClick;
+            if (click && !povClickHeld && (scene == DK64VR_SCENE_CUTSCENE) && (int(setting("cutscenes")) == 1)) {
+                dk64vr_body prevBody, lastBody;
+                dk64vr_get_bodies(&prevBody, &lastBody);
+                povChoice = (lastBody.mode == DK64VR_BODY_POV) ? 0 : 1;
+                dk64vr_logf("cutscene: %s person (right stick click)", povChoice ? "first" : "third");
+            }
+            povClickHeld = click;
+            h.pov_choice = povChoice;
+        }
         // the real floor in the play space (origin = the head at the last recentre); without a
         // tracked floor, or seated, assume the recentre happened standing
         h.floor_y = (floorTracked && (setting("seated") == 0.0)) ? (floorLocalY - origin.p.y)
@@ -3863,6 +3886,8 @@ private:
     XrSpace viewSpace = XR_NULL_HANDLE;
     XrSpace stageSpace = XR_NULL_HANDLE;  // the room's floor, where the runtime has one
     bool floorTracked = false;
+    int32_t povChoice = -1;               // this cutscene's view: -1 default, 0 third, 1 first
+    bool povClickHeld = false;
     float floorLocalY = 0.0f;             // the floor's height in LOCAL space, metres
     std::atomic<bool> sessionRunning = false;
     bool sessionFailed = false;

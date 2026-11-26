@@ -35,6 +35,9 @@ static const sfvr_setting_key port_keys[] = {
 	// about 0.8 m off the floor, so you feel small and reach the ground without kneeling.
 	{ "gorilla_world_scale", SFVR_SETTING_FLOAT, 26.0, 8.0, 60.0, NULL },
 	{ "match_height", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Immersive cutscenes: the shops' start in first person (right stick click switches any
+	// cutscene between first and third person).
+	{ "cutscene_pov", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	{ "standing_eye_height", SFVR_SETTING_FLOAT, 1.55, 1.0, 2.2, NULL },
 	// Real arm reach multiplier. Above 1 = long gorilla arms.
 	{ "arm_scale", SFVR_SETTING_FLOAT, 1.15, 0.5, 2.0, NULL },

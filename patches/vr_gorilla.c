@@ -804,6 +804,37 @@ static void vr_test_requests(Actor *player) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Cutscenes through the Kong's eyes (immersive cutscenes only). A right stick click switches any
+// cutscene between the game's camera and first person; the shops' (Cranky, Funky, Candy, Snide)
+// start in first person with `cutscene_pov` on. The view faces the way the Kong faced when it
+// started, so the game's camera cuts don't turn you.
+
+static s32 vr_pov;
+static s32 vr_pov_was;
+static f32 vr_pov_yaw;
+
+static s32 vr_pov_map_default(void) {
+    return current_map == MAP_CRANKYS_LAB || current_map == MAP_FUNKYS_STORE || current_map == MAP_CANDYS_MUSIC_SHOP
+        || current_map == MAP_SNIDES_HQ;
+}
+
+static void vr_update_pov(Actor *player) {
+    s32 want = 0;
+    if (player != NULL && vr_hands.hide_cutscene_bars && vr_current_scene() == VR_SCENE_CUTSCENE
+        && cc_number_of_players == 1 && current_character_index[0] >= 0 && current_character_index[0] <= 4) {
+        want = (vr_hands.pov_choice >= 0) ? vr_hands.pov_choice : (vr_hands.cutscene_pov && vr_pov_map_default());
+    }
+    if (want && !vr_pov_was) {
+        vr_pov_yaw = vr_game_to_heading(player->y_rotation);
+        recomp_printf("[vr-loco] cutscene in first person (map %d)\n", current_map);
+    } else if (!want && vr_pov_was) {
+        recomp_printf("[vr-loco] cutscene in third person\n");
+    }
+    vr_pov = want;
+    vr_pov_was = want;
+}
+
 void vr_gorilla_pre_frame(void) {
     Actor *player;
     gtl_input in;
@@ -824,6 +855,7 @@ void vr_gorilla_pre_frame(void) {
     recomp_vr_get_hands(&vr_hands);
     player = character_change_array[0].playerPointer;
     vr_test_requests(player);
+    vr_update_pov(player);
     vr_gst_out.hold = 0;
     vr_gst_out.stick_valid = 0;
     if (!vr_should_drive(player)) {
@@ -1048,6 +1080,26 @@ void vr_gorilla_post_frame(void) {
     vr_frame++;
     vr_body.frame = vr_frame;
     vr_body.active = vr_active;
+    if (!vr_active && vr_pov && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
+        // a cutscene through the Kong's eyes: the eye point over the feet, sized as in play
+        gtl_vec3 off;
+        player = character_change_array[0].playerPointer;
+        vr_setup_params(player);
+        vr_yaw = vr_pov_yaw;   // the head offset turns with the view the host builds from it
+        off = vr_play_to_world(vr_hands.head, vr_ws);
+        vr_body.head[0] = player->x_position - off.x;
+        vr_body.head[1] = player->y_position + vr_height - off.y;
+        vr_body.head[2] = player->z_position - off.z;
+        vr_body.yaw = vr_pov_yaw;
+        vr_body.world_scale = vr_ws;
+        vr_body.mode = VR_BODY_POV;
+        vr_body.press = 0;
+        vr_body.stick_valid = 0;
+        vr_body.stick_free = 0;
+        vr_body.gun_out = 0;
+        recomp_vr_publish_body(&vr_body);
+        return;
+    }
     if (vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
         player = character_change_array[0].playerPointer;
         // face where the head looks, so guns and moves go that way
@@ -1204,7 +1256,7 @@ RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
         }
     }
 
-    if (vr_active && vr_hide_body && character_change_array != NULL
+    if ((vr_active || vr_pov) && vr_hide_body && character_change_array != NULL
         && arg0 == character_change_array[0].playerPointer) {
         f32 (*m)[4] = (f32 (*)[4])(void *)&arg0->unkC;
         s32 r, c;
