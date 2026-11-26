@@ -14,4 +14,9 @@ if [[ $# -ge 1 && -f "$1" ]]; then
     shift
 fi
 cd "$run"
+# Keep a copy of the output (this run and the one before) so a crash can be read afterwards.
+mkdir -p logs
+[[ -f logs/last-run.log ]] && mv -f logs/last-run.log logs/prev-run.log
+exec > >(tee logs/last-run.log) 2>&1
+echo "[run] $(date '+%F %T') $*"
 exec "$repo/build-cmake/DK64Recompiled" --game dk64 "$@"
