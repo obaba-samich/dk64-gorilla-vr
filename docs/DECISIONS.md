@@ -181,3 +181,42 @@ which Quest controllers lack. The VR menu gets a Testing tab instead:
   rewritten. It saves with the file the next time the game saves.
 - Requests are counters the game acts on once each, at upstream's warp-menu point in the frame,
   and wait while there's no player (loading, title, the arcade games).
+
+### D29. Throws are flown by the arm physics
+The first headset test: "I could barely move". Two causes, both fixed:
+- A hand that touched the side of a step or ledge never let go. The collision sweep gets a
+  side's normal from the way the sphere moved, so from inside a side every move read as "further
+  in". A sweep that starts inside a side now moves out freely. In the simulator the hands had
+  been stuck at the start ledge in every run since the first day, which hid the next problem.
+- A release only handed the game a hint: a flat throw set the game's run speed, which it brakes
+  to zero with the stick centred; an upward one became the game's jump with our speed swapped in.
+  Now the locomotion core flies the body after a release (momentum, gravity at 9.8 m/s² times the
+  world scale, ground friction, its sweeps against floors and steps) and the game's own wall pass
+  takes away the speed that went into a wall. The flight ends on landing slower than 0.35 m/s, a
+  hand grabbing something, water, climbing, a warp, or the game moving the player into a state
+  that isn't the throw's (a hit, a slam, a vine, a barrel). The game still gets an A press for a
+  throw upwards off the ground, for the jump animation and sound, and its speed fields are
+  mirrored so animations and landings follow. This replaces the "game owns free flight" choice.
+
+### D30. Momentum carries, like Gorilla Tag
+Gorilla Tag (Another Axiom's GorillaLocomotion, MIT) measures the body's velocity every frame,
+whatever moved it, and sets the launch from the average of the last few frames times the jump
+multiplier, capped. So pushing off again while already flying keeps that speed and adds to it.
+The core's history used to hold only the frames a hand was pulling, and was cleared on release.
+It now follows the body through the air too (including the game's moves between steps), and a
+release uses the steps up to the last one that held on. Defaults stay at Gorilla Tag's: 1.1x,
+6.5 m/s cap.
+
+### D31. Arms are drawn
+Each hand gets an arm: a fur-coloured beam from a shoulder point (22 cm below and 17 cm beside
+the head, facing where the head faces) to the hand, stuck hands included. Boxes, like the hands,
+depth tested against the world.
+
+### D32. The left stick does the abilities too
+Gestures for everything was too much. The left stick is free in arm mode, so a flick does one
+action: up = gun out / away, down = throw an orange (where you look), left = instrument, right =
+Kong special. They press the same combos as the gestures (Z + C-left, Z + C-right, Z + C-up,
+Z + B), work with ability gestures off, and are off while the stick moves you (`stick_move`),
+steers a long fall or climbs. With Tag Anywhere on, left / right stay its Kong swap. Punches,
+the slam, the twirl and ducking stay gestures. `diag_stick_actions` flicks through all four for
+the simulator.
