@@ -48,7 +48,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Own model hidden | 🧪 | eye dumps |
 | Hands drawn in Kong colours | 🧪 | visible at the frame edge in dumps |
 | Arms drawn from the shoulders | 🧪 | eye dumps during the punch routine: fur arm to the hand (2026-11-25) |
-| Rowing along the floor moves DK | 🧪 | ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
+| Real floor from the STAGE space, world sized to your eye height (D34) | 🧪 | `floor: tracked, eyes 1.62 m above it`; scale 12.9 units/m for DK |
+| Rowing along the floor moves DK | 🧪 | after D34: ~900 units in under a minute of synthetic strokes, 62 throws, 117 contacts. Before D34: | ~430 units across Training Grounds in hops, plus the fall off the start ledge (2026-11-25). Before D29 the hands stuck to the start ledge and DK only jittered; the old "~240 units" came from runs with snap turns resetting the hands |
 | Falling off ledges uses DK64 gravity | 🧪 | treehouse ledge |
 | Throws carry DK (flown by the core, D29) | 🧪 | `launch ... m/s` then `throw over (grabbed)` 10-37 frames later; 19 throws in 2 minutes |
 | Hands let go of ledge sides | 🧪 | 123 contacts in 2 minutes instead of 2 (D29) |
@@ -63,7 +64,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Per-Kong bodies | ⬜ | table in place, only DK tested |
 | Haptics on contact | ⬜ | sent; Monado has no haptics |
 | Wrist HUD | ⬜ | placed on the off hand's aim pose; the sim's hands have no real pose |
-| Cutscene TV room, arcade room | ⬜ | layers submitted; Monado's null compositor shows nothing, eye dumps don't include quads |
+| Immersive cutscenes (default): stereo, look all round, no letterbox bars | 🧪 | intro cutscene, eye dump with the view turned 150°: the level is drawn behind the camera (2026-11-26) |
+| Cutscene TV room (option), arcade room | ⬜ | layers submitted; Monado's null compositor shows nothing, eye dumps don't include quads |
 | Control modes (arms / third person / barrel) | 🧪 | `[vr-loco] mode` lines: arms on DK Isles; the others need the maps |
 
 ## Abilities

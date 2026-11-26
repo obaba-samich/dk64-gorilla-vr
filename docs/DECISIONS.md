@@ -228,3 +228,30 @@ right = Kong special (Tag Anywhere's swap when that's on). Turning and C-up / C-
 left stick, which moves nothing in arm mode. Everywhere else (third person, barrels, climbing,
 long falls, `stick_move`) the right stick turns as before and the left stick moves. The host and
 the game use the same condition (body active, arm mode, stick not free, `stick_move` off).
+
+### D34. The real floor is the game's floor (Gorilla Tag's rig, 1:1)
+Second headset test: "can't fly up or move forward much, everything below me jitters". The play
+space's origin is the head at the last recentre, and the game's floor sat one Kong height under
+it: 21 units, which at the old 26 units/m is 0.8 m. Relaxed hands touched the ground at waist
+height, every throw was caught within frames, and strokes could only be short. GorillaLocomotion
+is a 1:1 rig on the real floor, so now:
+- The host locates the head in the runtime's STAGE space (floor at y = 0) and sends where the
+  floor is (`standing_eye_height`, 1.55 m, when a runtime has no floor, or seated).
+- The game puts its floor there. With `match_height` on (default) the world is sized so your
+  eyes are at the Kong's eye height: DK at 21 units and eyes at 1.6 m is about 13 units/m. The
+  camera uses the scale the game publishes. Off: `gorilla_world_scale` as before, with the
+  floor still at your real floor.
+- The prefab's numbers: arm reach 1.5 m, 0.4 m/s before a push throws you, 1 m before a stuck
+  hand lets go, 8 history frames at ~90 Hz (3 at the game's 30 Hz), 1.1x, 6.5 m/s.
+- A stuck hand keeps holding only while pressing into its own surface still finds it (the
+  prefab's cast leans into the surface the same way). Step sides now get their outward normal
+  from where the floor drops away, not from the hand's motion, which trapped hands.
+In the simulator, synthetic strokes went from stuck hands to about 900 units in under a minute.
+
+### D35. Cutscenes are immersive by default
+Asked for: cutscenes as 360 degrees instead of a TV. The existing "immersive" mode puts your head
+in the game's cutscene camera in the stereo world (you can look anywhere, including places the
+camera never shows, but can't move; the game's frustum culling is already off in VR). It's the
+default now, and the letterbox bars aren't drawn in it, since they'd sit stuck to your view.
+DK Arcade and Jetpac stay on the TV. First person as DK in chosen cutscenes (Cranky's lab and
+the like) is not done.
