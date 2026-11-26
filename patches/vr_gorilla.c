@@ -175,15 +175,33 @@ static s32 vr_touching(VrSweepCtx *c, gtl_vec3 p, gtl_vec3 came_from, f32 r, gtl
     hit->surface = vr_last_surface;
     hit->slip = vr_surface_slip(vr_last_surface);
     if (floor > p.y - r + r * 1.5f) {
-        // the floor top here is well above the sphere's bottom: we went into a side
-        f32 dx = came_from.x - p.x, dz = came_from.z - p.z;
-        f32 l = vr_sqrt(dx * dx + dz * dz);
-        if (l < 1e-4f) {
-            return 0; // straight down into a step's side can't happen; ignore
+        // The floor top here is well above the sphere's bottom: we're in a step's side. Its
+        // outward normal points to where the floor drops away: look around at the sphere's
+        // radius. (Taking it from the way we came trapped hands: every move read as "in".)
+        static const f32 dirs[8][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+            { 0.7071f, 0.7071f }, { -0.7071f, 0.7071f }, { 0.7071f, -0.7071f }, { -0.7071f, -0.7071f } };
+        f32 nx = 0.0f, nz = 0.0f, l, f2;
+        s32 k;
+        for (k = 0; k < 8; k++) {
+            f32 qx = p.x + dirs[k][0] * r * 1.5f, qz = p.z + dirs[k][1] * r * 1.5f;
+            if (!vr_floor_at(c->player, qx, qz, top, &f2) || f2 <= p.y - r * 0.5f) {
+                nx += dirs[k][0];
+                nz += dirs[k][1];
+            }
         }
-        hit->normal.x = dx / l;
+        l = vr_sqrt(nx * nx + nz * nz);
+        if (l < 1e-3f) {
+            // deep inside: fall back to the way we came
+            nx = came_from.x - p.x;
+            nz = came_from.z - p.z;
+            l = vr_sqrt(nx * nx + nz * nz);
+            if (l < 1e-4f) {
+                return 0;
+            }
+        }
+        hit->normal.x = nx / l;
         hit->normal.y = 0.0f;
-        hit->normal.z = dz / l;
+        hit->normal.z = nz / l;
     } else {
         // a floor: slope normal from two neighbouring samples
         f32 e = r * 0.5f, fx, fz;
@@ -458,7 +476,7 @@ static void vr_setup_params(Actor *player) {
     vr_params.unstick_distance = 0.2f * vr_hands.world_scale;
     vr_params.gravity = 0.0f;  // the game's own
     vr_sweep_ctx.player = player;
-    vr_sweep_ctx.wall_window = 1.0f * vr_hands.world_scale;
+    vr_sweep_ctx.wall_window = 26.0f;  // game units: steps up to about DK's height are walls
 }
 
 static void vr_build_input(gtl_input *in, f32 dt) {
