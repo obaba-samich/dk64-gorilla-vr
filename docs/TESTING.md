@@ -65,6 +65,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Haptics on contact | ⬜ | sent; Monado has no haptics |
 | Wrist HUD | ⬜ | placed on the off hand's aim pose; the sim's hands have no real pose |
 | Immersive cutscenes (default): stereo, look all round, no letterbox bars | 🧪 | intro cutscene, eye dump with the view turned 150°: the level is drawn behind the camera (2026-11-26) |
+| Shop cutscenes through the Kong's eyes, right stick click to switch (D36) | 🧪 | warp tour: Cranky's and Funky's start in first person and go back after; eye dumps of Funky's entrance from DK's eyes. The click itself is untested (the sim has no stick click) |
 | Cutscene TV room (option), arcade room | ⬜ | layers submitted; Monado's null compositor shows nothing, eye dumps don't include quads |
 | Control modes (arms / third person / barrel) | 🧪 | `[vr-loco] mode` lines: arms on DK Isles; the others need the maps |
 

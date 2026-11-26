@@ -255,3 +255,12 @@ camera never shows, but can't move; the game's frustum culling is already off in
 default now, and the letterbox bars aren't drawn in it, since they'd sit stuck to your view.
 DK Arcade and Jetpac stay on the TV. First person as DK in chosen cutscenes (Cranky's lab and
 the like) is not done.
+
+### D36. Cutscenes switch between first and third person
+Asked for: a button during cutscenes. In immersive cutscenes a right stick click switches between
+the game's camera (360, D35) and the Kong's eyes, for that cutscene. The click doesn't reach the
+game then (it was N64 L). Defaults: the shops' cutscenes (Cranky's, Funky's, Candy's, Snide's)
+start in first person (`cutscene_pov`, on), everything else in third. First person faces the way
+the Kong faced when the cutscene began and doesn't follow its turns or the game's camera cuts,
+so nothing turns you; the eye point follows the Kong as it walks. The player model is hidden as
+in play. Seen in the simulator: Funky's entrance cutscene from DK's eyes.
