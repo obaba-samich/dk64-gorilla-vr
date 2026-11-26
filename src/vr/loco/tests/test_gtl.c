@@ -204,6 +204,30 @@ static void test_history_length_matters(void) {
           "short history should favour the fast end of the stroke: %f vs %f", a.s.velocity.y, b.s.velocity.y);
 }
 
+/* Gorilla Tag: the velocity history follows the body through the air, so pushing off while
+ * already moving keeps that speed (times the multiplier) instead of starting from the stroke. */
+static void momentum_run(rig *r, float start_vx) {
+    setup_hand_on_floor(r);
+    r->p.max_jump_speed = 1000.0f;
+    r->p.ground_friction = 0.0f;
+    rig_step(r, 1, V(0, 3.0f, 0), Z3, Z3);   /* hand off the floor */
+    r->s.velocity.x = start_vx;              /* sliding along, nothing held */
+    rig_step(r, 8, Z3, Z3, Z3);
+    rig_step(r, 1, V(0, -3.3f, 0), Z3, Z3);  /* slap the floor */
+    rig_step(r, 2, V(0, -1.0f, 0), Z3, Z3);  /* short push */
+    r->launches = 0;
+    rig_step(r, 1, V(0, 3.0f, 0), Z3, Z3);   /* let go */
+}
+
+static void test_momentum_carries(void) {
+    rig a, b;
+    momentum_run(&a, 120.0f);
+    momentum_run(&b, 0.0f);
+    CHECK(a.launches == 1, "moving body should launch, got %d", a.launches);
+    CHECK(a.s.velocity.x > 50.0f && a.s.velocity.x > b.s.velocity.x + 50.0f,
+          "sideways speed should carry into the push: %f vs %f", a.s.velocity.x, b.s.velocity.x);
+}
+
 static void test_wall_climb(void) {
     rig r;
     float y0;
@@ -448,6 +472,7 @@ int main(void) {
         { "multiplier and cap", test_multiplier_and_cap },
         { "slow release does not launch", test_slow_release_does_not_launch },
         { "history length matters", test_history_length_matters },
+        { "momentum carries into the next push", test_momentum_carries },
         { "wall climb", test_wall_climb },
         { "body does not pass walls", test_body_does_not_pass_walls },
         { "room-scale walk collides", test_room_scale_walk_collides },

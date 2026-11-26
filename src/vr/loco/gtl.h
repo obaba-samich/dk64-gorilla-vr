@@ -111,6 +111,11 @@ typedef struct gtl_state {
     int initialised;
     gtl_vec3 last_head;        /* tracked head last step (play space) */
 
+    gtl_vec3 last_end;         /* body at the end of the last step, for the velocity history */
+    int has_last_end;
+    /* Body velocity over the last few steps, whatever moved it: hands, flight, the game. Like
+     * Gorilla Tag's, it carries through the air, so pushing off again while already moving adds
+     * to that speed instead of starting from zero. */
     gtl_vec3 history[GTL_HISTORY_MAX];
     int history_count;
     int history_head;

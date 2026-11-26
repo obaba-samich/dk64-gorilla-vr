@@ -107,6 +107,19 @@ static int history_len(const gtl_params *p) {
 
 static void history_push(gtl_state *s, const gtl_params *p, gtl_vec3 v) {
     int n = history_len(p);
+    if (s->history_count > n) {
+        /* history_frames got shorter: keep only the newest n samples */
+        gtl_vec3 keep[GTL_HISTORY_MAX];
+        int i, m = s->history_count;
+        for (i = 0; i < n; i++) {
+            keep[n - 1 - i] = s->history[(s->history_head - i + m) % m];
+        }
+        for (i = 0; i < n; i++) {
+            s->history[i] = keep[i];
+        }
+        s->history_count = n;
+        s->history_head = n - 1;
+    }
     s->history_head = (s->history_head + 1) % n;
     s->history[s->history_head] = v;
     if (s->history_count < n) {
@@ -156,6 +169,7 @@ void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in) {
     s->grounded = 0;
     s->history_count = 0;
     s->history_head = 0;
+    s->has_last_end = 0;
     s->last_head = in ? in->head : v3(0, 0, 0);
     s->origin = vsub(body_world, s->last_head);
     for (h = 0; h < 2; h++) {
@@ -264,6 +278,7 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
         s->last_head = in->head;
         s->velocity = v3(0, 0, 0);
         s->history_count = 0;
+        s->has_last_end = 0;
         for (h = 0; h < 2; h++) {
             s->hand[h].pos = hand_target(w, p, s, in, h);
             s->hand[h].touching = 0;
@@ -321,7 +336,7 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
         pull = vmul(pull, 1.0f / (float)pulling);
         s->body = slide(w, p, s->body, pull, p->body_radius, &ground, 0, 0);
         s->velocity = v3(0, 0, 0);
-        history_push(s, p, vmul(vsub(s->body, moved_from), 1.0f / dt));
+        (void)moved_from;
         s->grounded = ground;
     } else if (in->external_flight && in->mode != GTL_MODE_WATER) {
         /* the game moves the body; the caller syncs s->body from it before the next step */
@@ -390,12 +405,14 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
             ev->launched = 1;
             ev->launch_velocity = v;
         }
-        s->history_count = 0;
-        s->history_head = 0;
     }
-    if (!was_holding && !holding) {
-        s->history_count = 0;
-    }
+
+    /* body velocity this step, from wherever the last step left it (so a game that moved
+     * the body in between, or pushed it back off a wall, counts too). After the launch check,
+     * so a release uses the steps up to the last one that held on. */
+    history_push(s, p, vmul(vsub(s->body, s->has_last_end ? s->last_end : before), 1.0f / dt));
+    s->last_end = s->body;
+    s->has_last_end = 1;
 
     if (s->grounded && !was_grounded) {
         ev->landed = 1;
