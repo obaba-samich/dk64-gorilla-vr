@@ -214,6 +214,15 @@ static int vr_sweep(void *user, gtl_vec3 a, gtl_vec3 b, float r, gtl_hit *hit) {
     if (steps > 12) {
         steps = 12;
     }
+    {
+        // Starting inside the side of a step or ledge (floor top above us here): a side's
+        // normal is taken from the way we came, so any move would read as "further in" and a
+        // hand could never let go. Let whatever starts in there move out freely.
+        f32 floor;
+        if (vr_floor_at(c->player, a.x, a.z, a.y + r + c->wall_window, &floor) && floor > a.y - r + r * 1.5f) {
+            return 0;
+        }
+    }
     prev = a;
     for (i = 1; i <= steps; i++) {
         f32 t = (f32)i / (f32)steps;
