@@ -151,7 +151,20 @@ static int still_stuck(const gtl_world *w, const gtl_params *p, const gtl_hand *
     if (vdot(off, hand->normal) > p->hand_radius * 0.25f) {
         return 0;
     }
-    return vlen(w, off) < p->unstick_distance;
+    if (vlen(w, off) >= p->unstick_distance) {
+        return 0;
+    }
+    /* Still on something: pressed a little into its surface from where it's stuck, the hand
+     * must still find it (as Gorilla Tag's hand cast always leans into the surface). A hand
+     * caught inside a step's side, which the world lets out freely, finds nothing and lets go. */
+    {
+        gtl_hit hit;
+        gtl_vec3 pressed = vsub(hand->pos, vmul(hand->normal, p->hand_radius * 0.25f));
+        if (!w->sweep(w->user, hand->pos, pressed, p->hand_radius, &hit)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 /* Where the controller says the hand is, in world space, held to arm's reach. */
