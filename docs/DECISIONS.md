@@ -296,3 +296,21 @@ D34 put the game's floor at the real floor, which made the ground hard to reach 
 - The camera base no longer subtracts the frame's head height (the body stopped following it in
   D37), so the ground doesn't bob a frame behind your head any more.
 Simulator: 42 throws and ~100 units every 2 s, hops ~25 units high.
+
+### D39. Camera blend pairs, hands into barrels, a monitor mirror
+Fifth headset test ("WAY BETTER", but jitter, barrels, Cranky's exit):
+- The first-person camera read the latest two game bodies at display time while the blend weight
+  restarts when a workload arrives; a new body met the old weight and the view jumped ahead, then
+  back, each frame while moving. The pair is now taken when the workload arrives.
+- A cutscene's first / third person choice ends with the cutscene (leaving Cranky's, the choice
+  carried into the barrel exit outside, seen from inside the barrel).
+- Barrels (Tag, bonus, training, blast, Kong barrels) take the player only when their collision
+  boxes meet while the barrel's interaction type is 1 (decomp: 7A510_collision_interact.c,
+  80150_barrels.c; hidden barrels are state 0x14 with type 8). A hand touching an open barrel
+  starts a jump (A) and holds the body at its centre for up to a second; the log says whether it
+  took us. Not yet seen working: the simulator's test saves had no open barrel in reach.
+- The desktop window can mirror the left eye (`mirror_left_eye`, on): a window-shaped crop of the
+  centre, scaled with a Vulkan blit on RT64's present thread (rt64-mirror.extra.patch adds the
+  hook). The copy is freed with the session.
+Not done: climbing trees by gripping (tree trunks aren't in the floor-only collision the hands
+use), picking up bananas and coins with the hands.
