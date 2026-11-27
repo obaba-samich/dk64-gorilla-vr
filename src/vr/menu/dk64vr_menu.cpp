@@ -219,6 +219,8 @@ std::vector<Row> buildRows() {
           "Game units per metre. Higher: you're smaller, the ground is closer and every stroke goes further.", W::ManualScale, false, Virt::None, nullptr },
         { "arm_scale", "arm_scale", C, "Arm length", K::Slider, {}, 0.5, 2, 0.05, F::Times2,
           "Your real reach times this. Above 1 gives long gorilla arms.", W::Always, false, Virt::None, nullptr },
+        { "real_arms", "real_arms", C, "Kong's own arms", K::Toggle, {}, 0, 0, 0, F::None,
+          "Experimental, not working yet: your hands become the Kong's real arms. Off: simple block arms.", W::Always, false, Virt::None, nullptr },
         { "jump_multiplier", "jump_multiplier", C, "Throw strength", K::Slider, {}, 0.5, 3, 0.05, F::Times2,
           "How hard letting go mid-swing throws you.", W::Always, false, Virt::None, nullptr },
         { "max_jump_speed", "max_jump_speed", C, "Throw speed cap", K::Slider, {}, 1, 20, 0.5, F::None,

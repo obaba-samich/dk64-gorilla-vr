@@ -2824,6 +2824,7 @@ private:
         h.dominant = dominantHand();  // the shared dominant_hand setting; the other hand throws oranges
         h.duck_crouch = (setting("duck_crouch") != 0.0) ? 1 : 0;
         h.tag_anywhere = (setting("tag_anywhere") != 0.0) ? 1 : 0;
+        h.real_arms = (setting("real_arms") != 0.0) ? 1 : 0;
         // a counter, so the game (30 Hz) can't miss one between display frames
         h.diag_tag = 0;
         if ((setting("diag_tag_anywhere") > 0.0) && (diagGorillaStartS != 0.0)) {

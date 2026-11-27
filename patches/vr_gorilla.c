@@ -1769,6 +1769,11 @@ void func_global_asm_806317D4(Actor *arg0, f32 arg1[4][4], f32 arg2, f32 arg3, f
 void func_global_asm_8063162C(Actor *arg0, f32 arg1[4][4]);
 void guMtxCatF(float mf[4][4], float nf[4][4], float res[4][4]);
 
+// First person with the Kong's own arms (the draw folds the rest of the model away).
+static s32 vr_real_arms_wanted(void) {
+    return vr_active && vr_hide_body && vr_hands.real_arms;
+}
+
 RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
     f32 sp78[4][4];
     s16 phi_a0;
@@ -1802,7 +1807,8 @@ RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
         }
     }
 
-    if ((vr_active || vr_pov) && vr_hide_body && character_change_array != NULL
+    // (with the Kong's own arms the model keeps its size: the draw folds the body away instead)
+    if ((vr_active || vr_pov) && vr_hide_body && !vr_real_arms_wanted() && character_change_array != NULL
         && arg0 == character_change_array[0].playerPointer) {
         f32 (*m)[4] = (f32 (*)[4])(void *)&arg0->unkC;
         s32 r, c;
@@ -1950,6 +1956,289 @@ static Gfx *vr_draw_limb(Gfx *dl, s32 buf, s32 *n, s32 slot, u32 rgba, gtl_vec3 
     return vr_draw_box(dl, buf, n, slot, rgba, 0, vr_v3mul(vr_v3add(a, b), 0.5f), vr_v3mul(x, t), vr_v3mul(y, t), vr_v3mul(z, len * 0.5f + t * 0.3f));
 }
 
+// ---------------------------------------------------------------------------------------------
+// The Kong's own arms. A Kong's model is drawn with one world-space matrix per bone (the game
+// works them out from the animation just before the draw). In first person we hand the draw a
+// copy instead: every bone but the arms shrunk to a point at the eyes, where nothing of it can
+// be seen, and the arm bones moved so the shoulder sits by the head and the hand on the
+// controller, with the elbow from a two-bone reach. The game's own matrices stay as they are,
+// so everything that reads the skeleton (hit spheres, bone positions) sees the normal Kong.
+
+#define VR_ARM_MAX_BONES 64
+#define VR_ARM_EXTRA 4
+
+// Per Kong and arm (left, right): upper arm (its origin is the shoulder), forearm (the elbow),
+// hand (the wrist), and the bones that move with the hand, fingers first (the first one gives
+// the hand's length and which way the fingers point). -1 = none. Read off each Kong's skeleton
+// in the idle pose; the right wrist has a second bone (what the Kong holds) on every Kong but
+// Diddy. A Kong with no arms here keeps the box arms.
+typedef struct VrArmBones {
+    s8 upper, fore, hand;
+    s8 extra[VR_ARM_EXTRA];
+} VrArmBones;
+
+static const VrArmBones vr_arm_bones[5][2] = {
+    { { 8, 9, 10, { 11, 12, -1, -1 } }, { 13, 14, 15, { 16, 17, 18, -1 } } },    // DK, 25 bones
+    { { 7, 8, 9, { 11, 10, 12, -1 } }, { 13, 14, 15, { 17, 16, 18, -1 } } },     // Diddy, 37 (25-36 tail)
+    { { 4, 5, 6, { 7, 8, -1, -1 } }, { 9, 10, 11, { 12, 13, 14, -1 } } },       // Lanky, 21
+    { { 20, 21, 22, { 23, 24, 25, -1 } }, { 26, 27, 28, { 29, 30, 31, 32 } } }, // Tiny, 39 (4-19 pigtails)
+    { { 4, 5, 6, { 7, 8, 9, -1 } }, { 10, 11, 12, { 13, 14, 15, 16 } } },       // Chunky, 23
+};
+
+static Mtx vr_arm_mtx[2][VR_ARM_MAX_BONES];
+static u32 vr_arms_posed_frame = 0xFFFFFFFFu;
+
+// 3x3 rotations, column vectors: (R v)[i] = sum_j R[i][j] v[j]
+typedef struct VrRot {
+    f32 m[3][3];
+} VrRot;
+
+static gtl_vec3 vr_rot_apply(const VrRot *r, gtl_vec3 v) {
+    return vr_v3(r->m[0][0] * v.x + r->m[0][1] * v.y + r->m[0][2] * v.z,
+                 r->m[1][0] * v.x + r->m[1][1] * v.y + r->m[1][2] * v.z,
+                 r->m[2][0] * v.x + r->m[2][1] * v.y + r->m[2][2] * v.z);
+}
+
+static VrRot vr_rot_mul(const VrRot *a, const VrRot *b) {
+    VrRot r;
+    s32 i, j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            r.m[i][j] = a->m[i][0] * b->m[0][j] + a->m[i][1] * b->m[1][j] + a->m[i][2] * b->m[2][j];
+        }
+    }
+    return r;
+}
+
+// The smallest rotation taking unit vector a onto unit vector b.
+static VrRot vr_rot_between(gtl_vec3 a, gtl_vec3 b) {
+    VrRot r;
+    gtl_vec3 v = vr_v3cross(a, b);
+    f32 c = vr_v3dot(a, b), k;
+    if (c < -0.9999f) {
+        // opposite: half a turn about any axis square to a
+        gtl_vec3 ax = vr_v3norm(vr_v3cross(a, vr_v3(0.0f, 1.0f, 0.0f)), vr_v3(1.0f, 0.0f, 0.0f));
+        r.m[0][0] = 2.0f * ax.x * ax.x - 1.0f; r.m[0][1] = 2.0f * ax.x * ax.y; r.m[0][2] = 2.0f * ax.x * ax.z;
+        r.m[1][0] = 2.0f * ax.y * ax.x; r.m[1][1] = 2.0f * ax.y * ax.y - 1.0f; r.m[1][2] = 2.0f * ax.y * ax.z;
+        r.m[2][0] = 2.0f * ax.z * ax.x; r.m[2][1] = 2.0f * ax.z * ax.y; r.m[2][2] = 2.0f * ax.z * ax.z - 1.0f;
+        return r;
+    }
+    k = 1.0f / (1.0f + c);
+    r.m[0][0] = c + v.x * v.x * k;   r.m[0][1] = v.x * v.y * k - v.z; r.m[0][2] = v.x * v.z * k + v.y;
+    r.m[1][0] = v.y * v.x * k + v.z; r.m[1][1] = c + v.y * v.y * k;   r.m[1][2] = v.y * v.z * k - v.x;
+    r.m[2][0] = v.z * v.x * k - v.y; r.m[2][1] = v.z * v.y * k + v.x; r.m[2][2] = c + v.z * v.z * k;
+    return r;
+}
+
+static f32 vr_absf(f32 x) {
+    return (x < 0.0f) ? -x : x;
+}
+
+static gtl_vec3 vr_mtx_origin(f32 m[4][4]) {
+    return vr_v3(m[3][0], m[3][1], m[3][2]);
+}
+
+// Bone matrix src (world space, row vectors) turned by r about old pivot p0 and moved so p0
+// lands on p1, scaled by k about the pivot.
+static void vr_bone_move(f32 src[4][4], Mtx *dst, const VrRot *r, gtl_vec3 p0, gtl_vec3 p1, f32 k) {
+    f32 m[4][4];
+    s32 i;
+    gtl_vec3 t;
+    for (i = 0; i < 3; i++) {
+        gtl_vec3 row = vr_v3mul(vr_rot_apply(r, vr_v3(src[i][0], src[i][1], src[i][2])), k);
+        m[i][0] = row.x; m[i][1] = row.y; m[i][2] = row.z; m[i][3] = 0.0f;
+    }
+    t = vr_v3add(p1, vr_v3mul(vr_rot_apply(r, vr_v3sub(vr_mtx_origin(src), p0)), k));
+    m[3][0] = t.x; m[3][1] = t.y; m[3][2] = t.z; m[3][3] = 1.0f;
+    guMtxF2L(m, dst);
+}
+
+// A bone shrunk to a point at p (kept a hair above zero size, like the old body hiding).
+static void vr_bone_fold(f32 src[4][4], Mtx *dst, gtl_vec3 p) {
+    f32 m[4][4];
+    s32 i, j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            m[i][j] = src[i][j] * 0.0001f;
+        }
+        m[i][3] = 0.0f;
+    }
+    m[3][0] = p.x; m[3][1] = p.y; m[3][2] = p.z; m[3][3] = 1.0f;
+    guMtxF2L(m, dst);
+}
+
+// The eye point and the shoulder for arm h, world units (shared with the box arms).
+static gtl_vec3 vr_arm_head(void) {
+    return vr_v3add(vr_loco.body, vr_v3(0.0f, vr_params.head_height + vr_loco.last_head.y, 0.0f));
+}
+
+static gtl_vec3 vr_arm_shoulder(s32 h, gtl_vec3 right) {
+    f32 side = (h == 0) ? -1.0f : 1.0f;
+    return vr_v3add(vr_v3add(vr_arm_head(), vr_v3mul(right, side * 0.18f * vr_ws)), vr_v3(0.0f, -0.24f * vr_ws, 0.0f));
+}
+
+// Where hand h is drawn: on the surface it holds, or a little ahead along its motion when free
+// (it reaches the eyes a frame or so after it was sampled).
+static gtl_vec3 vr_arm_hand(s32 h) {
+    gtl_vec3 hand = vr_loco.hand[h].pos;
+    if (!vr_loco.hand[h].touching) {
+        gtl_vec3 v = vr_play_to_world(vr_hands.hand_vel[h], vr_ws * vr_hands.arm_scale);
+        hand = vr_v3add(hand, vr_v3mul(v, 0.045f));
+    }
+    return hand;
+}
+
+// The elbow of a two-bone reach from shoulder sh to wrist w, bones l1 and l2, bent out to the
+// side and down like the box arms' elbow.
+static gtl_vec3 vr_arm_elbow(gtl_vec3 sh, gtl_vec3 w, f32 l1, f32 l2, f32 side, gtl_vec3 right) {
+    gtl_vec3 up = vr_v3(0.0f, 1.0f, 0.0f);
+    gtl_vec3 d = vr_v3sub(w, sh);
+    f32 dist = vr_v3len(d);
+    gtl_vec3 dir = vr_v3norm(d, vr_v3mul(up, -1.0f));
+    gtl_vec3 bend;
+    f32 a, hh, lo = vr_absf(l1 - l2) + 0.01f;
+    if (dist < lo) {
+        dist = lo;
+    }
+    if (dist > l1 + l2) {
+        dist = l1 + l2;
+    }
+    a = (l1 * l1 - l2 * l2 + dist * dist) / (2.0f * dist);
+    hh = l1 * l1 - a * a;
+    hh = (hh > 0.0f) ? vr_sqrt(hh) : 0.0f;
+    bend = vr_v3add(vr_v3mul(right, side), vr_v3mul(up, -0.6f));
+    bend = vr_v3norm(vr_v3sub(bend, vr_v3mul(dir, vr_v3dot(bend, dir))), right);
+    return vr_v3add(vr_v3add(sh, vr_v3mul(dir, a)), vr_v3mul(bend, hh));
+}
+
+// Pose one arm into out[] (indexed by bone). 0 if the bones don't make sense.
+static s32 vr_pose_arm(const VrArmBones *ab, Mtx *game, Mtx *out, s32 count, s32 h, gtl_vec3 right, gtl_vec3 fwd) {
+    f32 mu[4][4], mf[4][4], mh[4][4], mx[4][4];
+    gtl_vec3 s0, e0, w0, f0, sh, hand, aim, wrist, elbow, tip;
+    f32 l1, l2, lh, k, seg, side = (h == 0) ? -1.0f : 1.0f;
+    VrRot r1, r2, r3, t;
+    s32 i;
+
+    if (ab->upper < 0 || ab->fore < 0 || ab->hand < 0 || ab->upper >= count || ab->fore >= count || ab->hand >= count) {
+        return 0;
+    }
+    guMtxL2F(mu, &game[(s32)ab->upper]);
+    guMtxL2F(mf, &game[(s32)ab->fore]);
+    guMtxL2F(mh, &game[(s32)ab->hand]);
+    s0 = vr_mtx_origin(mu);
+    e0 = vr_mtx_origin(mf);
+    w0 = vr_mtx_origin(mh);
+    l1 = vr_v3len(vr_v3sub(e0, s0));
+    l2 = vr_v3len(vr_v3sub(w0, e0));
+    if (l1 < 0.05f || l2 < 0.05f) {
+        return 0;   // folded (a cutscene's or an earlier hide), nothing to pose from
+    }
+    // the hand's length: wrist to the first finger bone
+    lh = 0.0f;
+    f0 = w0;
+    if (ab->extra[0] >= 0 && ab->extra[0] < count) {
+        guMtxL2F(mx, &game[(s32)ab->extra[0]]);
+        f0 = vr_mtx_origin(mx);
+        lh = vr_v3len(vr_v3sub(f0, w0));
+    }
+
+    // sized to your reach: shoulder to wrist as long as the box arms' two bones
+    seg = 0.36f * vr_ws * vr_hands.arm_scale;
+    k = (2.0f * seg) / (l1 + l2);
+    if (k < 0.5f) k = 0.5f;
+    if (k > 2.0f) k = 2.0f;
+
+    sh = vr_arm_shoulder(h, right);
+    hand = vr_arm_hand(h);
+    aim = vr_v3norm(vr_play_to_world(vr_hands.hand_dir[h], 1.0f), fwd);
+    // the palm's middle goes on the controller, so the wrist sits half a hand back along its aim
+    wrist = vr_v3sub(hand, vr_v3mul(aim, 0.5f * lh * k));
+    {
+        // a reach past the arm's length stretches it rather than leave the hand behind
+        f32 dist = vr_v3len(vr_v3sub(wrist, sh));
+        if (dist > (l1 + l2) * k * 0.999f) {
+            k = dist / ((l1 + l2) * 0.999f);
+        }
+    }
+    elbow = vr_arm_elbow(sh, wrist, l1 * k, l2 * k, side, right);
+
+    r1 = vr_rot_between(vr_v3norm(vr_v3sub(e0, s0), fwd), vr_v3norm(vr_v3sub(elbow, sh), fwd));
+    t = vr_rot_between(vr_v3norm(vr_rot_apply(&r1, vr_v3sub(w0, e0)), fwd), vr_v3norm(vr_v3sub(wrist, elbow), fwd));
+    r2 = vr_rot_mul(&t, &r1);
+    // the hand turns with the controller: its fingers along the aim
+    r3 = r2;
+    if (lh > 0.05f) {
+        tip = vr_v3norm(vr_rot_apply(&r2, vr_v3sub(f0, w0)), aim);
+        t = vr_rot_between(tip, aim);
+        r3 = vr_rot_mul(&t, &r2);
+    }
+
+    vr_bone_move(mu, &out[(s32)ab->upper], &r1, s0, sh, k);
+    vr_bone_move(mf, &out[(s32)ab->fore], &r2, e0, elbow, k);
+    vr_bone_move(mh, &out[(s32)ab->hand], &r3, w0, wrist, k);
+    for (i = 0; i < VR_ARM_EXTRA; i++) {
+        s32 b = ab->extra[i];
+        if (b >= 0 && b < count) {
+            guMtxL2F(mx, &game[b]);
+            vr_bone_move(mx, &out[b], &r3, w0, wrist, k);
+        }
+    }
+    return 1;
+}
+
+// Called by the actor draw (patches_matrix.c) with the matrices the game is about to draw the
+// actor with; returns the ones to draw it with instead.
+Mtx *vr_gorilla_pose_body(Actor *actor, Mtx *bones, s32 count) {
+    f32 m[4][4];
+    s32 i, h, k, ok;
+    u8 posed[VR_ARM_MAX_BONES];
+    Mtx *out;
+    gtl_vec3 eye, right, fwd;
+    f32 yaw;
+
+    if (!vr_real_arms_wanted() || character_change_array == NULL || actor != character_change_array[0].playerPointer
+        || bones == NULL || count <= 0) {
+        return bones;
+    }
+    if (count > VR_ARM_MAX_BONES) {
+        count = VR_ARM_MAX_BONES;   // more than any Kong has; the rest are drawn as the game has them
+    }
+    out = vr_arm_mtx[D_global_asm_807444FC & 1];
+    k = current_character_index[0];
+    yaw = vr_yaw + vr_hands.head_yaw;
+    fwd = vr_v3(vr_sin(yaw), 0.0f, vr_cos(yaw));
+    right = vr_v3(-vr_cos(yaw), 0.0f, vr_sin(yaw));
+    eye = vr_arm_head();
+
+    for (i = 0; i < count; i++) {
+        posed[i] = 0;
+    }
+    ok = (k >= 0 && k <= 4);
+    for (h = 0; h < 2 && ok; h++) {
+        const VrArmBones *ab = &vr_arm_bones[k][h];
+        ok = vr_pose_arm(ab, bones, out, count, h, right, fwd);
+        if (ok) {
+            posed[(s32)ab->upper] = posed[(s32)ab->fore] = posed[(s32)ab->hand] = 1;
+            for (i = 0; i < VR_ARM_EXTRA; i++) {
+                if (ab->extra[i] >= 0 && ab->extra[i] < count) {
+                    posed[(s32)ab->extra[i]] = 1;
+                }
+            }
+        }
+    }
+    // everything else folds into the eyes; without arms (a Kong not in the table), all of it
+    for (i = 0; i < count; i++) {
+        if (!ok || !posed[i]) {
+            guMtxL2F(m, &bones[i]);
+            vr_bone_fold(m, &out[i], eye);
+        }
+    }
+    if (ok) {
+        vr_arms_posed_frame = vr_frame;
+    }
+    return out;
+}
+
 // Gorilla Tag-style arms: shoulder, elbow (bent out and down, two-bone reach), hand. The hand is a
 // palm with fingers and a thumb, turned with the controller's aim; it brightens on a surface.
 Gfx *vr_gorilla_draw_hands(Gfx *dl) {
@@ -1961,6 +2250,9 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
 
     if (!vr_active || character_change_array == NULL) {
         return dl;
+    }
+    if (vr_real_arms_wanted() && vr_arms_posed_frame == vr_frame) {
+        return dl;   // the Kong's own arms are out
     }
     cc = &character_change_array[0];
     buf = D_global_asm_807444FC;
@@ -1988,15 +2280,8 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
 
     for (h = 0; h < 2; h++) {
         f32 side = (h == 0) ? -1.0f : 1.0f;
-        gtl_vec3 head = vr_v3add(vr_loco.body, vr_v3(0.0f, vr_params.head_height + vr_loco.last_head.y, 0.0f));
-        gtl_vec3 sh = vr_v3add(vr_v3add(head, vr_v3mul(right, side * 0.18f * ws)), vr_v3(0.0f, -0.24f * ws, 0.0f));
-        gtl_vec3 hand = vr_loco.hand[h].pos;
-        if (!vr_loco.hand[h].touching) {
-            // a free hand is drawn a little ahead along its motion: it reaches the eyes a frame
-            // or so after it was sampled (held hands stay exactly where they hold)
-            gtl_vec3 v = vr_play_to_world(vr_hands.hand_vel[h], vr_ws * vr_hands.arm_scale);
-            hand = vr_v3add(hand, vr_v3mul(v, 0.045f));
-        }
+        gtl_vec3 sh = vr_arm_shoulder(h, right);
+        gtl_vec3 hand = vr_arm_hand(h);
         gtl_vec3 d = vr_v3sub(hand, sh);
         f32 dist = vr_v3len(d);
         f32 seg = 0.36f * ws * vr_hands.arm_scale;   // upper arm = forearm

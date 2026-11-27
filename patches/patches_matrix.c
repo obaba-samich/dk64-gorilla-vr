@@ -1,5 +1,6 @@
 #include "common_structs.h"
 #include "vr_state.h"
+#include "vr_gorilla.h"
 
 extern u8 skip_interpolation;
 
@@ -184,7 +185,8 @@ RECOMP_PATCH Gfx *func_global_asm_80614B34(Gfx *dl, Actor *arg1) {
     }
     dl = func_global_asm_80687EE0(dl, arg1);
     dl = func_global_asm_80614C38(dl, arg1, var_s0);
-    gSPSegment(dl++, 0x04, osVirtualToPhysical(arg1->unk8));
+    // @recomp: VR first person draws the Kong's own arms (and nothing else of it)
+    gSPSegment(dl++, 0x04, osVirtualToPhysical(vr_gorilla_pose_body(arg1, (Mtx *)arg1->unk8, var_s0->bone_count)));
     gSPSegment(dl++, 0x03, osVirtualToPhysical((ActorModelHeader *)var_s0->unk0));
     for (i = 0; i < ACTOR_LOCKDOWN_BUFFER_SIZE; i++) {
         ld = &actor_lockdowns[i];

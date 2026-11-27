@@ -38,6 +38,7 @@ typedef struct VrHands {
     s32 cutscene_pov;
     s32 pov_choice;
     s32 diag_climb;
+    s32 real_arms;
 } VrHands;
 
 typedef struct VrBody {
@@ -83,6 +84,9 @@ void vr_gorilla_pre_frame(void);
 void vr_gorilla_post_frame(void);
 // Draws the hands; called right after the world in the frame's display list.
 Gfx *vr_gorilla_draw_hands(Gfx *dl);
+// The player's bone matrices, just before its model is drawn. In first person returns a copy
+// with every bone but the arms folded away and the arms posed to the controllers.
+Mtx *vr_gorilla_pose_body(Actor *actor, Mtx *bones, s32 count);
 s32 vr_gorilla_hide_cutscene_bars(void);
 #endif
 

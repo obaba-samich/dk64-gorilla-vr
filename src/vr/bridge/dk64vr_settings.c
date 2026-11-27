@@ -48,6 +48,9 @@ static const sfvr_setting_key port_keys[] = {
 	{ "standing_eye_height", SFVR_SETTING_FLOAT, 1.55, 1.0, 2.2, NULL },
 	// Real arm reach multiplier. Above 1 = long gorilla arms.
 	{ "arm_scale", SFVR_SETTING_FLOAT, 1.15, 0.5, 2.0, NULL },
+	// First person shows the Kong's own arms, posed to the controllers. Off: the box arms.
+	// Off by default until the arms show up in the eye dumps (docs/DECISIONS.md D46).
+	{ "real_arms", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Release speed multiplier and cap (metres a second of world speed).
 	{ "jump_multiplier", SFVR_SETTING_FLOAT, 1.1, 0.5, 3.0, NULL },
 	{ "max_jump_speed", SFVR_SETTING_FLOAT, 6.5, 1.0, 20.0, NULL },
