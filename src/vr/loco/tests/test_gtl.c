@@ -171,6 +171,7 @@ static void test_multiplier_and_cap(void) {
 
     setup_hand_on_floor(&r);
     r.p.max_jump_speed = 50.0f;
+    r.p.unstick_distance = 20.0f;   /* the game's proportions: a push faster than the cap stays held */
     rig_step(&r, 6, V(0, -1.0f, 0), Z3, Z3);
     rig_step(&r, 1, V(0, 3.0f, 0), Z3, Z3);
     CHECK(fabsf(r.s.velocity.y - 50.0f) < 0.5f, "capped at 50, got %f", r.s.velocity.y);
@@ -249,6 +250,24 @@ static void test_head_bob_stays_inside(void) {
     rig_step(&r, 4, Z3, Z3, V(0, -0.5f, 0));
     CHECK(r.s.hand[0].touching && r.s.hand[1].touching, "crouched: hands on the floor");
     CHECK(fabsf(r.s.body.y - y0) < 0.5f, "crouching to the floor kept the body there: %f", r.s.body.y - y0);
+}
+
+/* A smack into the ground lifts the body no faster than the throw cap per step. */
+static void test_smack_rises_smoothly(void) {
+    rig r;
+    float y0, y1;
+    rig_init(&r, V(-3, -1, 0), V(3, -1, 0));
+    r.fw.has_floor = 1;
+    rig_start(&r, V(0, 4, 0));
+    rig_step(&r, 30, Z3, Z3, Z3);
+    rig_step(&r, 6, V(0, -0.3f, 0), V(0, -0.3f, 0), Z3);   /* hands down to the floor */
+    r.p.unstick_distance = 20.0f;   /* the game's proportions */
+    y0 = r.s.body.y;
+    rig_step(&r, 1, V(0, -6.0f, 0), V(0, -6.0f, 0), Z3);   /* a smack: 6 units in one step */
+    y1 = r.s.body.y;
+    CHECK(y1 - y0 <= r.p.max_jump_speed * r.in.dt + 0.01f, "one step rose %f (cap %f)", y1 - y0, r.p.max_jump_speed * r.in.dt);
+    rig_step(&r, 6, Z3, Z3, Z3);
+    CHECK(r.s.body.y - y0 > 4.0f, "and the rest of the push follows: %f", r.s.body.y - y0);
 }
 
 static void test_wall_climb(void) {
@@ -422,7 +441,31 @@ static void test_reset_teleports(void) {
     gtl_reset(&r.s, V(100, 20, -40), &r.in);
     CHECK(r.s.body.x == 100.0f && r.s.body.z == -40.0f, "reset should place the body");
     CHECK(r.s.velocity.y == 0.0f, "reset clears velocity");
+    rig_step(&r, 1, Z3, Z3, Z3);
     CHECK(fabsf(r.s.hand[0].pos.x - 92.0f) < 0.01f, "hands come along: %f", r.s.hand[0].pos.x);
+}
+
+/* After a pause the hands may be low, their targets inside the floor: they must end on its
+ * surface, not stuck inside it. */
+static void test_reset_with_hands_in_the_floor(void) {
+    rig r;
+    float y0;
+    rig_init(&r, V(-3, -1, 0), V(3, -1, 0));
+    r.fw.has_floor = 1;
+    rig_start(&r, V(0, 4, 0));
+    rig_step(&r, 30, Z3, Z3, Z3);
+    r.p.unstick_distance = 10.0f;  /* the game's proportions (26 units against a 1.2 hand) */
+    r.in.hand[0].y = -6.5f;      /* under the floor (at y 0; the head is at 4) */
+    r.in.hand[1].y = -6.5f;
+    gtl_reset(&r.s, r.s.body, &r.in);
+    y0 = r.s.body.y;
+    rig_step(&r, 1, Z3, Z3, Z3);
+    CHECK(r.s.hand[0].pos.y >= r.p.hand_radius - 0.05f, "hand on the floor, not in it: %f", r.s.hand[0].pos.y);
+    CHECK(r.s.hand[0].touching, "and holding it");
+    /* rowing still moves the body */
+    rig_step(&r, 6, V(0, 0, 0.5f), V(0, 0, 0.5f), Z3);
+    CHECK(r.s.body.z < -1.0f, "rowing after the reset moves us: z %f", r.s.body.z);
+    (void)y0;
 }
 
 static void test_landing_event(void) {
@@ -497,6 +540,7 @@ int main(void) {
         { "history length matters", test_history_length_matters },
         { "momentum carries into the next push", test_momentum_carries },
         { "head bob stays inside the body", test_head_bob_stays_inside },
+        { "smack rises smoothly", test_smack_rises_smoothly },
         { "wall climb", test_wall_climb },
         { "body does not pass walls", test_body_does_not_pass_walls },
         { "room-scale walk collides", test_room_scale_walk_collides },
@@ -509,6 +553,7 @@ int main(void) {
         { "still water is still", test_water_still_is_still },
         { "frozen mode", test_frozen_mode },
         { "reset teleports", test_reset_teleports },
+        { "reset with the hands in the floor", test_reset_with_hands_in_the_floor },
         { "landing event", test_landing_event },
         { "zero dt is a no-op", test_zero_dt_is_noop },
         { "head height", test_head_height },

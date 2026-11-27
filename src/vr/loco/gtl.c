@@ -190,7 +190,10 @@ void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in) {
     s->last_head = in ? in->head : v3(0, 0, 0);
     s->origin = vsub(body_world, s->last_head);
     for (h = 0; h < 2; h++) {
-        s->hand[h].pos = in ? vadd(body_world, vsub(in->hand[h], in->head)) : body_world;
+        /* from the body's centre (free space): the first step sweeps out to the controller and
+         * stops on whatever is in the way, instead of starting inside the ground (after a pause
+         * with the hands low, both started stuck in it) */
+        s->hand[h].pos = body_world;
         s->hand[h].touching = 0;
         s->hand[h].was_touching = 0;
         s->hand[h].slip = 0.0f;
@@ -230,6 +233,12 @@ static void place_hand(gtl_state *s, const gtl_params *p, const gtl_world *w, co
         }
         hand->touching = 1;
         return;
+    }
+    if (was && vlen(w, vsub(target, hand->pos)) >= p->unstick_distance) {
+        /* let go by distance (Gorilla Tag: the hand jumps to the controller): look for the
+         * surface again from the head, so it lands under the controller instead of grabbing the
+         * old spot again in the same step and never pulling */
+        from = vadd(s->body, v3(0.0f, p->head_height + in->head.y, 0.0f));
     }
 
     move = vsub(target, from);
@@ -354,6 +363,13 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
         int ground = 0;
         gtl_vec3 moved_from = s->body;
         pull = vmul(pull, 1.0f / (float)pulling);
+        /* A hand smacked into the ground overshoots it by up to a whole frame of hand travel;
+         * pushing the body up by all of that at once is a pop (at 30 Hz a big one). Rising off a
+         * surface goes no faster than a throw can, the rest follows over the next frames (the
+         * hand stays pressed in, so it keeps pushing). */
+        if (pull.y > p->max_jump_speed * dt) {
+            pull.y = p->max_jump_speed * dt;
+        }
         s->body = slide(w, p, s->body, pull, p->body_radius, &ground, 0, 0);
         s->velocity = v3(0, 0, 0);
         (void)moved_from;
