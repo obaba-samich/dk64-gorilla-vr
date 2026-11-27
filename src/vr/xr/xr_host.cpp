@@ -2069,12 +2069,25 @@ private:
         else {
             if (recentrePending) {
                 recentrePending = false;
+                const bool recalibrateHeightPending0 = recalibrateHeightPending;
                 if (recalibrateHeightPending || (!standingHeightValid && (setting("seated") == 0.0))) {
                     standingHeightM = headPose.p.y;
                     standingHeightValid = true;
                     recalibrateHeightPending = false;
                 }
                 recentreHeadY = headPose.p.y;
+                if (recalibrateHeightPending0 && floorTracked) {
+                    // the explicit height calibration: your standing eye height over the floor
+                    const float e = headPose.p.y - floorLocalY;
+                    if ((e > 1.0f) && (e < 2.05f)) {   // a person standing, not a headset held up
+                        standingEyeM = e;
+                        standingEyeCalibrated = true;
+                        dk64vr_logf("height: standing eyes %.2f m over the floor", e);
+                    }
+                    else {
+                        dk64vr_logf("height: eyes %.2f m over the floor isn't standing; kept %.2f m", e, standingEyeHeight());
+                    }
+                }
                 origin.q = quatFromYaw(quatYaw(headPose.q));
                 origin.p = headPose.p;
                 cinemaAnchored = false;
@@ -2082,6 +2095,13 @@ private:
                 dk64vr_logf("recentre: head yaw %.1f deg, at %.2f %.2f %.2f m", quatYaw(headPose.q) * 180.0f / 3.1415926f, headPose.p.x, headPose.p.y, headPose.p.z);
             }
 
+            // The height never comes from where the head happened to be at a recentre (recentring
+            // on tiptoe, or with the headset held up, then put the eyes under the floor once you
+            // stood normally): standing, the origin sits a standing eye height over the tracked
+            // floor every time. A recentre only sets the heading and where you stand.
+            if ((setting("seated") == 0.0) && floorTracked) {
+                origin.p.y = floorLocalY + standingEyeHeight();
+            }
             headInOrigin = poseMul(poseInverse(origin), headPose);
             // head_translation scales the head's displacement, never the eye offsets (patterns.md).
             const float translation = float(setting("head_translation"));
@@ -2089,6 +2109,23 @@ private:
             const float seatedCompensation = (setting("seated") != 0.0 && standingHeightValid)
                 ? (standingHeightM - recentreHeadY) : 0.0f;
             headInOrigin.p.y += float(setting("height_offset")) + seatedCompensation;
+            // Gorilla Tag's head collider: the eyes never go into the floor under the body.
+            // Crouching low stops a head's radius over it (the game says how far the eyes'
+            // standing point is over that floor).
+            {
+                dk64vr_body pb, lb;
+                dk64vr_get_bodies(&pb, &lb);
+                if (lb.active && (lb.eye_floor_gap > 0.0f) && (lb.world_scale > 0.0f)) {
+                    const float lowest = -(lb.eye_floor_gap / lb.world_scale - HeadRadiusM);
+                    if (headInOrigin.p.y < lowest) {
+                        headInOrigin.p.y = lowest;
+                        if (!headFloorLogged) {
+                            headFloorLogged = true;
+                            dk64vr_logf("head: kept %.2f m over the floor (crouched %.2f m)", HeadRadiusM, -lowest);
+                        }
+                    }
+                }
+            }
         }
 
         Pose yaw;
@@ -4212,6 +4249,13 @@ private:
     bool standingHeightValid = false;
     float standingHeightM = 0.0f;
     float recentreHeadY = 0.0f;
+    float standingEyeM = 0.0f;           // calibrated standing eye height over the floor
+    bool standingEyeCalibrated = false;
+    bool headFloorLogged = false;
+    static constexpr float HeadRadiusM = 0.15f;   // GorillaLocomotion's head collider
+    float standingEyeHeight() const {
+        return standingEyeCalibrated ? standingEyeM : float(setting("standing_eye_height"));
+    }
     Pose eyeInHead[2];
     // The point camera-facing billboards face in this eye pass.
     Vec3 billboardPoint;

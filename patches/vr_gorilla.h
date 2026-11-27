@@ -62,6 +62,7 @@ typedef struct VrBody {
     s32 stick_free;
     s32 mode;
     f32 world_scale;
+    f32 eye_floor_gap;
 } VrBody;
 
 #define VR_BODY_OFF 0

@@ -1657,6 +1657,7 @@ void vr_gorilla_post_frame(void) {
         vr_body.yaw = vr_pov_yaw;
         vr_body.world_scale = vr_ws;
         vr_body.mode = VR_BODY_POV;
+        vr_body.eye_floor_gap = 0.0f;
         vr_body.press = 0;
         vr_body.stick_valid = 0;
         vr_body.stick_free = 0;
@@ -1685,6 +1686,16 @@ void vr_gorilla_post_frame(void) {
             vr_body.head[0] = player->x_position - off.x;
             vr_body.head[1] = player->y_position + vr_height + vr_water_lift;   // the head's height stays inside the body: the host adds it live
             vr_body.head[2] = player->z_position - off.z;
+        }
+        {
+            // how far the eyes' standing point is over the floor right under them, so the host
+            // keeps a crouching head out of the floor
+            f32 fy;
+            vr_body.eye_floor_gap = 0.0f;
+            if (vr_floor_at(player, vr_body.head[0], vr_body.head[2], vr_body.head[1] + 5.0f, &fy)
+                && vr_body.head[1] > fy) {
+                vr_body.eye_floor_gap = vr_body.head[1] - fy;
+            }
         }
         vr_body.yaw = vr_yaw;
         vr_body.world_scale = vr_ws;

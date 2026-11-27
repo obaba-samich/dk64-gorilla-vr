@@ -83,6 +83,7 @@ typedef struct dk64vr_body {
     int32_t stick_free;      // long in the air (Rocketbarrel, glides): the left stick steers
     int32_t mode;            // DK64VR_BODY_* below, for the log and the HUD
     float world_scale;       // game units per metre the game used this frame (camera, hands)
+    float eye_floor_gap;     // head[1] over the floor under the body, units (0: unknown)
 } dk64vr_body;
 
 enum {
