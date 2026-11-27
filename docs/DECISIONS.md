@@ -408,3 +408,27 @@ Tenth headset test: trees still didn't hold, hands didn't swim, transitions were
 - Transitions draw live while the game still renders 3D (`live_transitions`).
 - Headless checks: `diag_climb` (+300 units up a DK Isles tree), `diag_swim` (about 60 units/s in
   Galleon).
+
+### D46. The Kong's own arms (real_arms), built but not showing yet
+Asked for: DK64's real arms instead of the box arms.
+- A Kong is drawn with one world-space matrix per bone (segment 4, `bone_arrays[D_global_asm_807444FC]`,
+  `bone_count` in the model header), worked out by the game right before the draw
+  (func_global_asm_806195D0 inside func_global_asm_80614A64).
+- The actor draw (func_global_asm_80614B34, patches_matrix.c) asks `vr_gorilla_pose_body` which
+  matrices to use. For the player in first person it returns a copy: every non-arm bone shrunk to
+  a point at the eyes, and the upper arm, forearm and hand posed with a two-bone reach (shoulder by
+  the head as for the box arms, wrist half a hand behind the controller, elbow out and down,
+  fingers along the aim). The arm is scaled so shoulder to wrist matches the box arms' reach.
+- Unlike the first plan, the game's own `bone_arrays` aren't overwritten: hit spheres and
+  getBonePosition read them after the draw, and they should keep seeing the normal Kong. With
+  real arms on, renderActor no longer shrinks the model (the copy hides the body instead).
+- Arm bones per Kong, read off skeleton dumps (upper, fore, hand + bones that follow the hand):
+  DK 8,9,10 +11,12 / 13,14,15 +16,17,18; Diddy 7,8,9 +11,10,12 / 13,14,15 +17,16,18;
+  Lanky 4,5,6 +7,8 / 9,10,11 +12,13,14; Tiny 20,21,22 +23,24,25 / 26,27,28 +29..32;
+  Chunky 4,5,6 +7,8,9 / 10,11,12 +13..16. The right wrist has a duplicate bone on all but Diddy.
+- **Status: not working.** Sim eye dumps during the punch routine showed neither the real arms nor
+  the box arms (box arms skip while the real ones are posed). No crash in a 4-minute run swapping
+  through all five Kongs. So `real_arms` ships **off**; off is the old behaviour exactly.
+- Next: log the posed wrist position against the eye and the hand target, and check the
+  player's model is drawn at all in first person; then eye dumps per Kong, a warp tour, and the
+  headset.

@@ -74,6 +74,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Head walking doesn't stop gravity / jumps | ⬜ | fixed by reading the code (D23); only a moving real head shows it |
 | Climbing mode (vines, trees, ladders, ledges) | ⬜ | behaviour-based (D24); the sim's rowing never hangs on anything |
 | Per-Kong bodies | ⬜ | table in place, only DK tested |
+| The Kong's own arms (`real_arms`, D46, off) | ❌ | bone table for all five Kongs; sim eye dumps don't show the arms yet; no crash swapping through all five |
 | Haptics on contact | ⬜ | sent; Monado has no haptics |
 | Wrist HUD | ⬜ | placed on the off hand's aim pose; the sim's hands have no real pose |
 | Immersive cutscenes (default): stereo, look all round, no letterbox bars | 🧪 | intro cutscene, eye dump with the view turned 150°: the level is drawn behind the camera (2026-11-26) |
