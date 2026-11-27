@@ -314,3 +314,20 @@ Fifth headset test ("WAY BETTER", but jitter, barrels, Cranky's exit):
   hook). The copy is freed with the session.
 Not done: climbing trees by gripping (tree trunks aren't in the floor-only collision the hands
 use), picking up bananas and coins with the hands.
+
+### D40. Pause, smacks, swimming
+Sixth headset test: the mirror didn't show, pausing broke movement, smacking the ground
+jittered, swimming didn't work.
+- After a pause the hands restarted at the controllers; low ones started inside the ground,
+  stayed stuck and never pulled (the body froze for half a minute). A reset now starts the hands
+  at the body's centre and the first step sweeps them out to the surface; a hand let go by
+  distance looks for the surface again from the head.
+- A smack overshoots the ground by a whole frame of hand travel, which became a one-frame pop of
+  up to 10 units. Pressing into a surface now lifts the body no faster than the throw cap per
+  step (2-3 frames for a hard smack).
+- The water check asked for the floor from 2000 units overhead and found roofs indoors (no
+  water), so swimming was never noticed. It asks just above the head now. At the surface the
+  eyes and hands are lifted over the water (the game holds the feet ~35 units under it).
+- The mirror logs when it first draws into the window, or why it can't (simulator: it draws).
+Open: an intermittent crash (one simulator run in five, no debugger here to see where), arm
+latency (the hands are drawn at the game's 30 Hz), grip climbing, hand pickups.

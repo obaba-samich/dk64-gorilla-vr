@@ -9,7 +9,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 
 | Test | How | Status |
 |---|---|---|
-| Locomotion core: 28 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
+| Locomotion core: 30 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
 | Gestures: 24 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr), plus the arm-mode stick routing (turn and C-up / C-down on the left stick while the right one does abilities) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
@@ -48,6 +48,9 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Own model hidden | 🧪 | eye dumps |
 | Hands drawn in Kong colours | 🧪 | visible at the frame edge in dumps |
 | Arms with elbows, hands with fingers and thumb (D37) | 🧪 | eye dumps during the punch routine (2026-11-26) |
+| Hands start on the surface after a pause (D40) | ✅ unit test | the old core left them inside the floor, not holding |
+| Smack into the ground rises over frames (D40) | ✅ unit test, 🧪 | sim: 5.6 then 3.5 units instead of a 10-unit pop |
+| Swimming detected indoors, paddling moves (D40) | 🧪 | Aztec llama temple: `in water (surface 337.4)`, ~90 units of paddling |
 | Hands into barrels (D39) | ⬜ | the jump starts and the body is held at a barrel; no open barrel in reach on the simulator's saves |
 | Left eye mirrored on the monitor (D39) | 🧪 | starts (`mirror: left eye on the desktop window`), clean exit; the window itself not looked at |
 | Head moves inside the body (D37) | ✅ unit test | head bobbing leaves the body still; crouching puts the hands on the floor |
