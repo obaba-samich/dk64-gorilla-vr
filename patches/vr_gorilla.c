@@ -433,6 +433,12 @@ static s32 vr_should_drive(Actor *player) {
         vr_body_mode = VR_BODY_THIRD_PERSON;
         return 0;
     }
+    if (current_map == MAP_CRANKYS_LAB || current_map == MAP_FUNKYS_STORE || current_map == MAP_CANDYS_MUSIC_SHOP
+        || current_map == MAP_SNIDES_HQ) {
+        // the shops are menus: the sticks pick moves and items, the game's camera shows them
+        vr_body_mode = VR_BODY_THIRD_PERSON;
+        return 0;
+    }
     if (vr_in_tag_barrel(player)) {
         vr_body_mode = VR_BODY_BARREL;
         return 0;
@@ -1097,7 +1103,13 @@ void vr_gorilla_pre_frame(void) {
     // Kong; a closed grip there holds that hand where it is and pulls move the body directly
     // (through the movement patch, like any held hand). Open hands leave it to the game's own
     // climbing (the stick and the overhead-pull gesture), and letting go mid-pull throws.
-    if (vr_body_mode == VR_BODY_CLIMB) {
+    // The game holds the Kong off the ground itself: a tree, rope, vine (states 87 / 88), ladder or
+    // ledge. Anything off the ground that isn't a jump or a fall counts (the newer decomp's state
+    // names don't match the real numbers, so there's no list of climbing states to go by).
+    if (vr_body_mode == VR_BODY_CLIMB
+        || (!(VR_ACTOR_CONTACT(player) & 1) && !vr_in_water && !vr_flying && !vr_loco.hand[0].touching
+            && !vr_loco.hand[1].touching && player->control_state != VR_STATE_NORMAL
+            && player->control_state != VR_STATE_AIR && player->control_state != 23 && player->control_state != 31)) {
         vr_climb_seen = 90;                    // three seconds to start gripping after it lets go
         vr_climb_x = player->x_position;
         vr_climb_z = player->z_position;
