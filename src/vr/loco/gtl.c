@@ -221,6 +221,20 @@ static void place_hand(gtl_state *s, const gtl_params *p, const gtl_world *w, co
         hand->touching = 0;
         return;
     }
+    if (in->hand_hold[h]) {
+        /* held by the grip: it stays where it closed, whatever is (or isn't) under it */
+        if (!was) {
+            hand->pos = target;
+            hand->normal = v3(0, 1, 0);
+            hand->slip = 0.0f;
+            if (ev) {
+                ev->hand_contact[h] = 1;
+                ev->contact_speed[h] = 0.0f;
+            }
+        }
+        hand->touching = 1;
+        return;
+    }
 
     /* A stuck hand stays put until the controller pulls far enough away from it, or pulls
      * out of the surface. Pushing further in keeps it stuck. */
@@ -332,7 +346,7 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
             gtl_vec3 target = hand_target(w, p, s, in, h);
             gtl_vec3 d;
             was_holding = 1;
-            if (!still_stuck(w, p, hand, target)) {
+            if (!in->hand_hold[h] && !still_stuck(w, p, hand, target)) {
                 /* lifting off: let go now instead of dragging the body towards the hand */
                 continue;
             }

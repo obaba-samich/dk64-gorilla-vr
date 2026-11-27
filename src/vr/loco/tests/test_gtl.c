@@ -270,6 +270,28 @@ static void test_smack_rises_smoothly(void) {
     CHECK(r.s.body.y - y0 > 4.0f, "and the rest of the push follows: %f", r.s.body.y - y0);
 }
 
+/* A held grip climbs: the hand stays where it closed in mid-air and pulling down lifts the body;
+ * opening it lets the body fall again. */
+static void test_grip_hold_climbs(void) {
+    rig r;
+    float y0;
+    rig_init(&r, V(-3, 2, 3), V(3, 2, 3));
+    r.fw.has_floor = 1;
+    rig_start(&r, V(0, 4, 0));
+    rig_step(&r, 30, Z3, Z3, Z3);
+    y0 = r.s.body.y;
+    r.in.hand_hold[0] = r.in.hand_hold[1] = 1;
+    rig_step(&r, 1, Z3, Z3, Z3);
+    CHECK(r.s.hand[0].touching && r.s.hand[1].touching, "both grips hold in the air");
+    rig_step(&r, 20, V(0, -0.5f, 0), V(0, -0.5f, 0), Z3);   /* pull down 10 */
+    CHECK(r.s.body.y - y0 > 9.0f, "pulling climbed %f", r.s.body.y - y0);
+    r.in.hand_hold[0] = r.in.hand_hold[1] = 0;
+    rig_step(&r, 1, V(0, 0, -2.0f), V(0, 0, -2.0f), Z3);    /* open the hands, away from anything */
+    rig_step(&r, 10, V(0, 1.0f, 0), V(0, 1.0f, 0), Z3);      /* and back up, off the floor */
+    rig_step(&r, 240, Z3, Z3, Z3);   /* (letting go mid-pull throws us up first) */
+    CHECK(r.s.body.y - y0 < 1.0f, "let go: back down %f", r.s.body.y - y0);
+}
+
 static void test_wall_climb(void) {
     rig r;
     float y0;
@@ -541,6 +563,7 @@ int main(void) {
         { "momentum carries into the next push", test_momentum_carries },
         { "head bob stays inside the body", test_head_bob_stays_inside },
         { "smack rises smoothly", test_smack_rises_smoothly },
+        { "grip hold climbs", test_grip_hold_climbs },
         { "wall climb", test_wall_climb },
         { "body does not pass walls", test_body_does_not_pass_walls },
         { "room-scale walk collides", test_room_scale_walk_collides },

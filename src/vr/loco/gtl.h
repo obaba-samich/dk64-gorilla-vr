@@ -85,6 +85,8 @@ typedef struct gtl_input {
     gtl_vec3 head;
     gtl_vec3 hand[2];
     int hand_enabled[2];       /* 0 while a hand is busy (holding a gun, an instrument...) */
+    int hand_hold[2];          /* the grip holds this hand where it is, surface or not (a tree, a
+                                  ladder, a vine the caller says is in reach); pulls move the body */
     int mode;
     int external_flight;       /* the game owns gravity and free flight: when no hand holds,
                                   only room-scale moves the body and a release just reports
