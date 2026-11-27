@@ -959,6 +959,10 @@ public:
         }
     }
 
+    bool mirrorSetting() const {
+        return setting("mirror_left_eye") != 0.0;
+    }
+
     bool mirrorWanted() override {
         return (setting("mirror_left_eye") != 0.0) && stereoLatched;
     }
@@ -4318,6 +4322,10 @@ bool hostRequested(int argc, char **argv, const std::filesystem::path &appFolder
 
 bool hostActive() {
     return host != nullptr;
+}
+
+bool hostMirrorsWindow() {
+    return (host != nullptr) && host->mirrorSetting();
 }
 
 void hostShutdown() {

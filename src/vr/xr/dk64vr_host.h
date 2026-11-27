@@ -18,9 +18,12 @@ bool hostInstall(const std::filesystem::path &appFolder);
 bool hostRequested(int argc, char **argv, const std::filesystem::path &appFolder);
 
 // True once hostInstall found a headset: the game runs in VR. The desktop window is then created
-// hidden (docs/VR_ARCHITECTURE.md section 4): nothing is ever presented to it, and a mapped,
+// hidden unless it mirrors the headset view (docs/VR_ARCHITECTURE.md section 4): a mapped,
 // never-drawn window is what SteamVR's dashboard shows as a black desktop-game panel.
 bool hostActive();
+
+// The desktop window mirrors the headset view (setting mirror_left_eye), so it should be shown.
+bool hostMirrorsWindow();
 
 // From main(), after the renderer has shut down.
 void hostShutdown();
