@@ -1643,3 +1643,33 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
 s32 vr_gorilla_hide_cutscene_bars(void) {
     return recomp_vr_is_active() && vr_hands.hide_cutscene_bars;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Hands pick things up. Bananas, coins, crystals, ammo, film, melons and the rest are grid items
+// the game collects within a sphere around the player (func_global_asm_806F4D70 sets it each
+// frame and clears the extra spheres; func_global_asm_806F4DC0 adds one, as the races do for
+// their path nodes). With arm locomotion each hand gets its own sphere, so reaching out and
+// touching an item collects it.
+
+typedef struct VrGridBounds {
+    f32 x, y, z, radius;
+} VrGridBounds;
+extern VrGridBounds D_global_asm_807FD740[];
+extern void *D_global_asm_807FD780[];
+void func_global_asm_806F4DC0(u8 playerIndex, f32 x, f32 y, f32 z, f32 radius);
+
+// @recomp: the player's collection sphere, plus one per hand in arm locomotion.
+RECOMP_PATCH void func_global_asm_806F4D70(u8 playerIndex, f32 x, f32 y, f32 z, f32 radius) {
+    s32 h;
+    D_global_asm_807FD740[playerIndex].x = x;
+    D_global_asm_807FD740[playerIndex].y = y;
+    D_global_asm_807FD740[playerIndex].z = z;
+    D_global_asm_807FD740[playerIndex].radius = radius;
+    D_global_asm_807FD780[playerIndex] = NULL;
+    if (playerIndex == 0 && vr_active && vr_body_mode == VR_BODY_ARMS) {
+        for (h = 0; h < 2; h++) {
+            func_global_asm_806F4DC0(playerIndex, vr_loco.hand[h].pos.x, vr_loco.hand[h].pos.y, vr_loco.hand[h].pos.z,
+                vr_params.hand_radius * 2.5f);
+        }
+    }
+}
