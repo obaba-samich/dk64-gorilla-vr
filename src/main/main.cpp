@@ -59,6 +59,7 @@
 
 #ifdef DK64_VR
 #include "../vr/xr/dk64vr_host.h"
+#include "../vr/diag/dk64vr_diag.h"
 #endif
 
 namespace {
@@ -715,6 +716,7 @@ static void set_rumble_vr(int controller_num, bool on) {
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+    dk64vr::installCrashReport();   // @vr: a call stack in the log if the game crashes
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {
         ultramodern::error_handling::message_box(("Invalid version string: " + version_string).c_str());

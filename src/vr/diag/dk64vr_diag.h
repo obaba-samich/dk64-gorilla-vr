@@ -8,6 +8,11 @@
 
 namespace dk64vr {
 
+// On a crash (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT), writes the call stack and the
+// executable's load address to stderr (the run log), then lets the crash go on as before. Turn
+// the addresses into lines with: addr2line -f -C -e build-cmake/DK64Recompiled <address - base>.
+void installCrashReport();
+
 // Writes an RGBA8 (or BGRA8, swapped to RGBA) image as PNG on a detached thread. The pixels are
 // copied before this returns. Alpha is written as 255 unless keepAlpha (the HUD image).
 void writePngAsync(const std::string &path, const uint8_t *pixels, uint32_t width, uint32_t height, uint32_t rowBytes, bool bgra, bool keepAlpha = false);

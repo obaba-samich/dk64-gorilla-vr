@@ -181,3 +181,46 @@ void requestQuit(const char *reason) {
 }
 
 }
+
+#if defined(__linux__)
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <execinfo.h>
+#include <unistd.h>
+#include <link.h>
+
+namespace {
+void crashReport(int sig) {
+    // async-signal-safe enough for a dying process: no allocation besides backtrace's
+    void *frames[64];
+    const int count = backtrace(frames, 64);
+    char line[160];
+    int len = snprintf(line, sizeof(line), "\n[crash] signal %d (%s), %d frames; executable base %p\n", sig, strsignal(sig), count,
+        (void *)_r_debug.r_map->l_addr);
+    if (len > 0) {
+        (void)!write(2, line, size_t(len));
+    }
+    backtrace_symbols_fd(frames, count, 2);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+}
+
+namespace dk64vr {
+void installCrashReport() {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = crashReport;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESETHAND;
+    for (int sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT }) {
+        sigaction(sig, &sa, nullptr);
+    }
+}
+}
+#else
+namespace dk64vr {
+void installCrashReport() {}
+}
+#endif
