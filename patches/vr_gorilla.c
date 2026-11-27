@@ -446,6 +446,90 @@ static s32 vr_tree_cooldown;       // frames before the next let-go press
 static f32 vr_trees[VR_MAX_TREES][3]; // trunks (ladders, ledges) the game latched onto in this map
 static s32 vr_tree_count;
 static s32 vr_trees_map = -1;
+static s32 vr_climb_list_logged;
+static s32 vr_diag_climb_placed;
+static f32 vr_climb_diag_y;
+
+// The game's own list of climbables (trees, poles, ladders) in the map: each is a run of segments
+// between two bones of an actor (type 0) or a prop (types 1, 2). Same layout as the decomp's
+// Struct807FDCC0; func_global_asm_8072F59C walks it to find what the Kong can latch onto.
+typedef struct VrClimbSeg {
+    u8 bone0, bone1, pad2, pad3;
+    f32 len, f8, fC;
+    s16 s10, s12, s14, s16_;
+    s8 off, p19, p1A, p1B;   // off != 0: segment not in use
+} VrClimbSeg;
+typedef struct VrClimbable {
+    void *owner;
+    u8 kind, u5, u6, segs;
+    f32 f8, fC;
+    s32 s10;
+    f32 f14;
+    u8 u18, p19, p1A, p1B;
+    f32 f1C, range, range_swim, f28, f2C;
+    u8 u30, u31, p32, p33;
+    VrClimbSeg *seg;
+    struct VrClimbable *next;
+} VrClimbable;
+extern VrClimbable *D_global_asm_807FDCC0;
+extern u8 getBonePosition(Actor *actor, s32 boneIndex, f32 *x, f32 *y, f32 *z);
+extern void func_global_asm_806335B0(s32 arg0, u8 arg1, s32 boneIndex, f32 *x, f32 *y, f32 *z);
+
+static void vr_climb_bone(VrClimbable *c, s32 bone, f32 *x, f32 *y, f32 *z) {
+    if (c->kind == 0) {
+        getBonePosition((Actor *)c->owner, bone, x, y, z);
+    } else {
+        func_global_asm_806335B0((s32)c->owner, 1, bone, x, y, z);
+    }
+}
+
+// Distance from a point to the nearest climbable in the map (1e9 when there are none);
+// *count gets how many there are, *reach how close counts as on it (the game's own latch range
+// for that one, at least 16).
+static f32 vr_climbable_dist_at(f32 px, f32 py, f32 pz, s32 *count, f32 *reach, f32 *at) {
+    VrClimbable *c;
+    f32 best = 1e18f, best_reach = 16.0f;
+    s32 n = 0;
+    for (c = D_global_asm_807FDCC0; c != NULL && n < 256; c = c->next) {
+        s32 i;
+        n++;
+        if (c->owner == NULL || c->seg == NULL || c->kind > 2) {
+            continue;
+        }
+        for (i = 0; i < c->segs && i < 32; i++) {
+            f32 x1, y1, z1, x2, y2, z2, dx, dy, dz, t, l2, cx, cy, cz, d2;
+            if (c->seg[i].off != 0) {
+                continue;
+            }
+            vr_climb_bone(c, c->seg[i].bone0, &x1, &y1, &z1);
+            vr_climb_bone(c, c->seg[i].bone1, &x2, &y2, &z2);
+            dx = x2 - x1; dy = y2 - y1; dz = z2 - z1;
+            l2 = dx * dx + dy * dy + dz * dz;
+            t = l2 > 0.0001f ? ((px - x1) * dx + (py - y1) * dy + (pz - z1) * dz) / l2 : 0.0f;
+            t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+            cx = x1 + dx * t - px; cy = y1 + dy * t - py; cz = z1 + dz * t - pz;
+            d2 = cx * cx + cy * cy + cz * cz;
+            if (d2 < best) {
+                best = d2;
+                if (at != NULL) {
+                    at[0] = px + cx; at[1] = py + cy; at[2] = pz + cz;
+                }
+                best_reach = (c->range > 16.0f && c->range < 60.0f) ? c->range : 16.0f;
+            }
+        }
+    }
+    if (count != NULL) {
+        *count = n;
+    }
+    if (reach != NULL) {
+        *reach = best_reach;
+    }
+    return best >= 1e17f ? 1e9f : vr_sqrt(best);
+}
+
+static f32 vr_climbable_dist(f32 px, f32 py, f32 pz, s32 *count, f32 *reach) {
+    return vr_climbable_dist_at(px, py, pz, count, reach, NULL);
+}
 static s32 vr_vine_held;
 static s32 vr_drive_fallback_logged;
 
@@ -1252,6 +1336,35 @@ void vr_gorilla_pre_frame(void) {
         if (current_map != vr_trees_map) {
             vr_trees_map = current_map;
             vr_tree_count = 0;
+            vr_climb_list_logged = 0;
+        }
+        if (!vr_climb_list_logged && D_global_asm_807FDCC0 != NULL) {
+            s32 n = 0;
+            f32 reach = 0.0f;
+            f32 d = vr_climbable_dist(player->x_position, player->y_position + 20.0f, player->z_position, &n, &reach);
+            vr_climb_list_logged = 1;
+            recomp_printf("[vr-loco] climbables in map %d: %d (nearest %.0f units, reach %.0f)\n", current_map, n, d, reach);
+            vr_diag_climb_placed = 0;
+        }
+        if (vr_hands.diag_climb && !vr_diag_climb_placed && vr_climb_list_logged && vr_tag_settled > 30) {
+            // diagnostics: stand right in front of the nearest climbable, facing it
+            f32 at[3], reach = 0.0f;
+            s32 n = 0;
+            f32 d = vr_climbable_dist_at(player->x_position, player->y_position + 20.0f, player->z_position, &n, &reach, at);
+            vr_diag_climb_placed = 1;
+            if (d < 1e8f) {
+                f32 fx = vr_sin(vr_yaw + vr_hands.head_yaw), fz = vr_cos(vr_yaw + vr_hands.head_yaw);
+                player->x_position = at[0] - fx * 9.0f;
+                player->z_position = at[2] - fz * 9.0f;
+                player->y_position = at[1] - 20.0f;
+                vr_climb_diag_y = player->y_position;
+                vr_initialised = 0;   // re-seat the hands on the new spot
+                recomp_printf("[vr-loco] diag climb: placed by a climbable (was %.0f away) at y %.0f\n", d, player->y_position);
+            }
+        }
+        if (vr_hands.diag_climb && vr_diag_climb_placed && (vr_frame % 30) == 0) {
+            recomp_printf("[vr-loco] diag climb: y %.0f (%+.0f), state %d, holding %d\n", player->y_position,
+                player->y_position - vr_climb_diag_y, st, vr_grip_climbing);
         }
         if ((st == 13 || st == 66 || st == 93 || st == 94) && vr_tree_cooldown == 0 && vr_extra_frames == 0) {
             // remember where it latched: a trunk (or ladder, ledge) the grips can hold from now on
@@ -1304,13 +1417,24 @@ void vr_gorilla_pre_frame(void) {
         if (st == 87 || st == 88 || st == 99) {
             near = 0;   // a vine: the game swings you (see above)
         }
-        if (!near && !vr_scripted && (g0 || g1) && vr_tree_count > 0) {
-            // a hand closing on a known trunk holds, whenever (Gorilla Tag: grab and climb)
-            s32 h, k;
-            f32 best = 1e9f;
+        if (!near && !vr_scripted && (g0 || g1)) {
+            // a hand closing on a tree, pole or ladder holds, whenever (Gorilla Tag: grab and
+            // climb). The game's own list of climbables first, then trunks it latched onto.
+            s32 h, k, ncl = 0;
+            f32 best = 1e9f, cbest = 1e9f;
             for (h = 0; h < 2; h++) {
                 if (!(h == 0 ? g0 : g1)) {
                     continue;
+                }
+                {
+                    f32 reach = 16.0f;
+                    f32 d = vr_climbable_dist(vr_loco.hand[h].pos.x, vr_loco.hand[h].pos.y, vr_loco.hand[h].pos.z, &ncl, &reach);
+                    if (d < cbest) {
+                        cbest = d;
+                    }
+                    if (d < reach + vr_params.hand_radius) {
+                        near = 1;
+                    }
                 }
                 for (k = 0; k < vr_tree_count; k++) {
                     f32 hx = vr_loco.hand[h].pos.x - vr_trees[k][0], hz = vr_loco.hand[h].pos.z - vr_trees[k][2];
@@ -1324,7 +1448,8 @@ void vr_gorilla_pre_frame(void) {
                 }
             }
             if (!vr_grip_climbing && (vr_frame % 15) == 0) {
-                recomp_printf("[vr-loco] grip: nearest known trunk %.0f units from the hand%s\n", vr_sqrt(best), near ? " (holds)" : "");
+                recomp_printf("[vr-loco] grip: nearest climbable %.0f units (%d in map), known trunk %.0f%s\n",
+                    cbest, ncl, vr_sqrt(best), near ? " (holds)" : "");
             }
         }
         if (near && (g0 || g1) && !vr_gun_drawn(player)) {

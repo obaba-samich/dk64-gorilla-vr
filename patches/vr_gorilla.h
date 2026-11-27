@@ -37,6 +37,7 @@ typedef struct VrHands {
     s32 hide_cutscene_bars;
     s32 cutscene_pov;
     s32 pov_choice;
+    s32 diag_climb;
 } VrHands;
 
 typedef struct VrBody {

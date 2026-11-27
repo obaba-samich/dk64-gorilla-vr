@@ -2682,6 +2682,28 @@ private:
                 diagGorillaHands(h);
             }
         }
+        bool diagClimb = false;
+        if ((setting("diag_climb") > 0.0) && stereoLatched && (diagGorillaStartS != 0.0)) {
+            const double t = displayS - diagGorillaStartS - setting("diag_gorilla");
+            if ((t >= 0.0) && (t < setting("diag_climb"))) {
+                // hand over hand: one grip closes high and pulls down, the other lets go and
+                // reaches up, 0.6 s a stroke
+                const float ph = float(std::fmod(t, 1.2) / 1.2);
+                for (int i = 0; i < 2; i++) {
+                    const float q = std::fmod(ph + (i == 0 ? 0.0f : 0.5f), 1.0f);
+                    // each grip holds a little longer than half the stroke, so one always holds
+                    const bool pulling = q < 0.58f;
+                    const float u = pulling ? q / 0.58f : (q - 0.58f) / 0.42f;
+                    h.hand[i][0] = h.head[0] + (i == 0 ? -0.12f : 0.12f);
+                    h.hand[i][1] = h.head[1] + (pulling ? 0.3f - 0.6f * u : -0.3f + 0.6f * u);
+                    h.hand[i][2] = h.head[2] - 0.35f;
+                    h.grip[i] = pulling ? 1.0f : 0.0f;
+                }
+                h.valid = 1;
+                h.diag_climb = 1;
+                diagClimb = true;
+            }
+        }
         bool diagGestures = false;
         if ((setting("diag_gestures") > 0.0) && stereoLatched) {
             const double rowFor = setting("diag_gorilla");
@@ -2701,7 +2723,7 @@ private:
             gorillaLastHand[i] = now;
         }
         gorillaHandsSeen = true;
-        if (!diagGestures) {
+        if (!diagGestures && !diagClimb) {
             h.grip[0] = s.lBumper ? 1.0f : 0.0f;
             h.grip[1] = s.rBumper ? 1.0f : 0.0f;
             h.trigger[0] = s.lTrigger;

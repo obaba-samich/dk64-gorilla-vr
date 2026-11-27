@@ -72,6 +72,9 @@ static const sfvr_setting_key port_keys[] = {
 	// Diagnostic: every this many seconds of arm locomotion, swap to the next Kong (freed or not).
 	{ "diag_tag_anywhere", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	{ "diag_stick_actions", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	// Diagnostic: after diag_gorilla's rowing, put the Kong by the nearest tree in each map and
+	// climb it hand over hand with the grips, for this many seconds. 0 = off.
+	{ "diag_climb", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: unlock everything (the Testing tab's button) once arm locomotion starts.
 	{ "diag_unlock", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Diagnostic: every this many seconds of play, warp to the next place on the Testing tab's

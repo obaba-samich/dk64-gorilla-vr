@@ -57,6 +57,7 @@ typedef struct dk64vr_hands {
     int32_t hide_cutscene_bars; // immersive cutscenes: no letterbox bars stuck to your view
     int32_t cutscene_pov;    // shops' cutscenes start in first person (the Kong's eyes)
     int32_t pov_choice;      // this cutscene: -1 its default, 0 third person, 1 first person
+    int32_t diag_climb;      // diagnostics: put the Kong at the nearest tree and climb it
 } dk64vr_hands;
 
 // Game to host, once per game frame. Game units, world space.
