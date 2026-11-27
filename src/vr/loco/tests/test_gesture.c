@@ -355,6 +355,16 @@ static void test_stick_actions(void) {
     CHECK(r.events == GST_EV_SPECIAL && (r.seen_hold & GST_N64_B), "right = special, events %x", r.events);
 }
 
+static void test_stick_flick_forgiving(void) {
+    rig r;
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, 0.3f, -0.55f);          /* a lazy, diagonal-ish 63% push down */
+    CHECK(r.events == GST_EV_ORANGE, "a sloppy push down still throws, events %x", r.events);
+    rig_init(&r); r.in.stick_actions = 1;
+    flick(&r, 0.25f, 0.4f);           /* 47%: just resting a thumb on it */
+    CHECK(r.events == 0, "a light touch does nothing, events %x", r.events);
+}
+
 static void test_stick_flick_fires_once(void) {
     rig r;
     int n = 0, f;
@@ -420,6 +430,7 @@ int main(void) {
     test_left_handed();
     test_stick_actions();
     test_stick_flick_fires_once();
+    test_stick_flick_forgiving();
     test_stick_actions_off();
     test_no_motion_keeps_stick();
     printf("%d checks, %d failed\n", checks, failures);

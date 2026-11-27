@@ -280,13 +280,18 @@ void gst_step_frame(gst_state *s, const gst_params *p, const gst_input *in, gst_
     {
         float x = in->stick[0], y = in->stick[1];
         float ax = gst_abs(x), ay = gst_abs(y);
+        float m2 = x * x + y * y;
         int dir = 0;
-        if (ay > 0.7f && ay > ax) {
-            dir = y > 0.0f ? 1 : 2;
-        } else if (ax > 0.7f && ax > ay) {
-            dir = x < 0.0f ? 3 : 4;
+        /* forgiving: past ~55% of the travel in any direction, the closer of the four wins
+           (a strict 70% on one axis made oranges hard to throw) */
+        if (m2 > 0.55f * 0.55f) {
+            if (ay >= ax) {
+                dir = y > 0.0f ? 1 : 2;
+            } else {
+                dir = x < 0.0f ? 3 : 4;
+            }
         }
-        if (!in->stick_actions || (ax < 0.3f && ay < 0.3f)) {
+        if (!in->stick_actions || m2 < 0.3f * 0.3f) {
             s->stick_dir = 0;
         } else if (dir != 0 && s->stick_dir == 0) {
             s->stick_dir = dir;
