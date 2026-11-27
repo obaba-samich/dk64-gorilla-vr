@@ -37,6 +37,8 @@ static const sfvr_setting_key port_keys[] = {
 	// Off (Gorilla Tag): your eyes at the Kong's eye height, hands hold you up. On: the real
 	// floor is the game's floor and the world is sized to your height.
 	{ "match_height", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// The desktop window shows the left eye (a crop that fills the window) while in the headset.
+	{ "mirror_left_eye", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	// Immersive cutscenes: the shops' start in first person (right stick click switches any
 	// cutscene between first and third person).
 	{ "cutscene_pov", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },

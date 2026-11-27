@@ -928,6 +928,26 @@ public:
             recordReadback(commandList, image, chain, eyeReadback[eye], "vr-eye" + std::to_string(eye));
         }
 
+        // the desktop mirror: a copy of the left eye for the present thread (mirrorRecord)
+        if ((eye == 0) && (setting("mirror_left_eye") != 0.0)) {
+            std::scoped_lock lock(mirrorMutex);
+            if (!mirrorTexture || (mirrorWidth != chain.width) || (mirrorHeight != chain.height)) {
+                mirrorTexture = device->createTexture(plume::RenderTextureDesc::ColorTarget(chain.width, chain.height, plume::RenderFormat::R8G8B8A8_UNORM));
+                mirrorWidth = chain.width;
+                mirrorHeight = chain.height;
+                dk64vr_logf("mirror: left eye on the desktop window (%ux%u)", mirrorWidth, mirrorHeight);
+            }
+            const plume::RenderTextureBarrier toCopy[] = {
+                plume::RenderTextureBarrier(image, plume::RenderTextureLayout::COPY_SOURCE),
+                plume::RenderTextureBarrier(mirrorTexture.get(), plume::RenderTextureLayout::COPY_DEST)
+            };
+            commandList->barriers(plume::RenderBarrierStage::COPY, toCopy, 2);
+            const plume::RenderBox box(0, 0, int32_t(chain.width), int32_t(chain.height));
+            // the eye image is sRGB and the copy UNORM: the same bytes, blitted as-is later
+            commandList->copyTextureRegion(plume::RenderTextureCopyLocation::Subresource(mirrorTexture.get()), plume::RenderTextureCopyLocation::Subresource(image), 0, 0, 0, &box);
+            mirrorFresh = true;
+        }
+
         commandList->barriers(plume::RenderBarrierStage::GRAPHICS, plume::RenderTextureBarrier(image, plume::RenderTextureLayout::COLOR_WRITE));
         eyesRecorded[eye] = true;
         if (setting("dump_foveation") != 0.0 && (dumpDue || !foveationDumped[eye])) {
@@ -937,6 +957,44 @@ public:
             foveation.dump(eye, width, height, (dataDir / "vr-dumps" / name).string(), foveatedEye[eye]);
             foveationDumped[eye] = true;
         }
+    }
+
+    bool mirrorWanted() override {
+        return (setting("mirror_left_eye") != 0.0) && stereoLatched;
+    }
+
+    // Present thread: a crop of the left eye with the window's shape (the centre 80% of its
+    // height, clear of the lens mask's corners), scaled to fill the window.
+    bool mirrorRecord(plume::RenderCommandList *commandList, plume::RenderTexture *target, uint32_t width, uint32_t height) override {
+        std::scoped_lock lock(mirrorMutex);
+        if (!mirrorTexture || !mirrorFresh || (width == 0) || (height == 0)) {
+            return false;
+        }
+        const plume::RenderTextureBarrier toBlit[] = {
+            plume::RenderTextureBarrier(mirrorTexture.get(), plume::RenderTextureLayout::COPY_SOURCE),
+            plume::RenderTextureBarrier(target, plume::RenderTextureLayout::COPY_DEST)
+        };
+        commandList->barriers(plume::RenderBarrierStage::COPY, toBlit, 2);
+        const float aspect = float(width) / float(height);
+        float srcH = 0.8f * float(mirrorHeight);
+        float srcW = srcH * aspect;
+        if (srcW > 0.95f * float(mirrorWidth)) {
+            srcW = 0.95f * float(mirrorWidth);
+            srcH = srcW / aspect;
+        }
+        const int32_t x0 = int32_t(0.5f * (float(mirrorWidth) - srcW)), y0 = int32_t(0.5f * (float(mirrorHeight) - srcH));
+        VkImageBlit blit = {};
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.layerCount = 1;
+        blit.srcOffsets[0] = { x0, y0, 0 };
+        blit.srcOffsets[1] = { x0 + int32_t(srcW), y0 + int32_t(srcH), 1 };
+        blit.dstSubresource = blit.srcSubresource;
+        blit.dstOffsets[0] = { 0, 0, 0 };
+        blit.dstOffsets[1] = { int32_t(width), int32_t(height), 1 };
+        vkCmdBlitImage(static_cast<plume::VulkanCommandList *>(commandList)->vk,
+            static_cast<plume::VulkanTexture *>(mirrorTexture.get())->vk, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            static_cast<plume::VulkanTexture *>(target)->vk, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        return true;
     }
 
     plume::RenderFramebuffer *foveatedFramebuffer(uint32_t eye, plume::RenderCommandList *commands, plume::RenderFramebuffer *framebuffer) override {
@@ -1681,6 +1739,11 @@ private:
         destroySwapchain(uiChain);
         destroySwapchain(hudChain);
         hudReadback.buffer.reset();
+        {
+            std::scoped_lock lock(mirrorMutex);  // freed with the session, before the device goes
+            mirrorTexture.reset();
+            mirrorFresh = false;
+        }
         eyeReadback[0].buffer.reset();
         eyeReadback[1].buffer.reset();
         panelReadback.buffer.reset();
@@ -3942,6 +4005,10 @@ private:
     XrSpace viewSpace = XR_NULL_HANDLE;
     XrSpace stageSpace = XR_NULL_HANDLE;  // the room's floor, where the runtime has one
     bool floorTracked = false;
+    std::mutex mirrorMutex;               // the desktop mirror's copy of the left eye
+    std::unique_ptr<plume::RenderTexture> mirrorTexture;
+    uint32_t mirrorWidth = 0, mirrorHeight = 0;
+    bool mirrorFresh = false;
     std::mutex camBodyMutex;              // the body pair of the newest workload (camera blend)
     dk64vr_body camBodyPrev = {}, camBodyLast = {};
     bool camBodyValid = false;

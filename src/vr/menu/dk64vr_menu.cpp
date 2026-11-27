@@ -298,6 +298,8 @@ std::vector<Row> buildRows() {
 
         { "_rate", nullptr, D, "Display rate", K::Info, {}, 0, 0, 0, F::None,
           "Read only.", W::Always, false, Virt::None, nullptr },
+        { "mirror_left_eye", "mirror_left_eye", D, "Mirror on the monitor", K::Toggle, {}, 0, 0, 0, F::None,
+          "The desktop window shows your left eye's view (cropped to fill it) while you play.", W::Always, false, Virt::None, nullptr },
         { "refresh_rate", "refresh_rate", D, "Refresh request", K::Seg, { { 72, "72", nullptr }, { 90, "90", nullptr }, { 120, "120", nullptr }, { 144, "144", nullptr } }, 0, 0, 0, F::None,
           "Asked for once at start-up, in Hz. The Frame usually keeps its per-app rate.", W::Always, false, Virt::None, nullptr },
         { "res_auto", "resolution_scale", D, "Automatic resolution", K::Toggle, {}, 0, 0, 0, F::None,
