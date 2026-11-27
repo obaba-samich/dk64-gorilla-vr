@@ -1,0 +1,49 @@
+--- a/src/hle/rt64_vr.h
++++ b/src/hle/rt64_vr.h
+@@ -190,6 +190,13 @@
+         virtual RenderFramebuffer *panelAcquire(RenderTexture **texture, uint32_t *width, uint32_t *height) = 0;
+         virtual void panelRelease() = 0;
+ 
++        // Present thread. A mirror of the headset view on the desktop window: when wanted, RT64
++        // acquires the window's image and the host records into it (layout COLOR_WRITE on entry,
++        // any on return; RT64 then makes it PRESENT). False from mirrorRecord: nothing to show yet,
++        // RT64 clears it.
++        virtual bool mirrorWanted() { return false; }
++        virtual bool mirrorRecord(RenderCommandList *commandList, RenderTexture *target, uint32_t width, uint32_t height) { return false; }
++
+         // Present thread, after a successful panelAcquire: true draws only the UI hook into the
+         // panel image, over transparent black (a menu that floats over the world), without the
+         // game's output under it.
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -364,6 +364,30 @@
+                     lockedWorkloadMutex = false;
+                 }
+ 
++                // The desktop window shows the host's mirror of the headset view, once per present.
++                if ((i == 0) && swapChainValid && vrHost->mirrorWanted()) {
++                    uint32_t mirrorIndex = 0;
++                    swapChainValid = ext.swapChain->acquireTexture(acquiredSemaphore.get(), &mirrorIndex);
++                    if (swapChainValid) {
++                        RenderTexture *mirrorTarget = ext.swapChain->getTexture(mirrorIndex);
++                        RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();
++                        commandList->begin();
++                        commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(mirrorTarget, RenderTextureLayout::COLOR_WRITE));
++                        if (!vrHost->mirrorRecord(commandList, mirrorTarget, ext.swapChain->getWidth(), ext.swapChain->getHeight())) {
++                            commandList->setFramebuffer(swapChainFramebuffers[mirrorIndex].get());
++                            commandList->clearColor();
++                        }
++                        commandList->barriers(RenderBarrierStage::NONE, RenderTextureBarrier(mirrorTarget, RenderTextureLayout::PRESENT));
++                        commandList->end();
++                        const RenderCommandList *recorded = commandList;
++                        RenderCommandSemaphore *waitSemaphore = acquiredSemaphore.get();
++                        RenderCommandSemaphore *signalSemaphore = drawSemaphores[mirrorIndex].get();
++                        ext.presentGraphicsWorker->commandQueue->executeCommandLists(&recorded, 1, &waitSemaphore, 1, &signalSemaphore, 1, ext.presentGraphicsWorker->commandFence.get());
++                        ext.presentGraphicsWorker->wait();
++                        swapChainValid = ext.swapChain->present(mirrorIndex, &signalSemaphore, 1);
++                    }
++                }
++
+                 if (frameCountersNextPresented > 0) {
+                     {
+                         std::unique_lock<std::mutex> interpolatedLock(ext.sharedResources->interpolatedMutex);

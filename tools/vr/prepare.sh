@@ -22,6 +22,17 @@ apply() {
 }
 
 apply "$plume" "$patches/plume-vr.patch" plume
+# rt64: extra patches sit on top of the VR patch. If they're in, take them out for the VR
+# patch's own check, then put them back (the loop below).
+extras=()
+for p in "$patches"/rt64-*.extra.patch; do
+    [[ -e "$p" ]] && extras+=("$p")
+done
+for (( k=${#extras[@]}-1; k>=0; k-- )); do
+    if git -C "$rt64" apply --reverse --check "${extras[k]}" >/dev/null 2>&1; then
+        git -C "$rt64" apply --reverse "${extras[k]}"
+    fi
+done
 apply "$rt64" "$patches/rt64-vr.patch" rt64
 # fixes to other submodules, not VR specific
 apply "$repo/lib/RecompFrontend" "$repo/third_party/patches/recompfrontend-exit-crash.patch" RecompFrontend
