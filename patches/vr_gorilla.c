@@ -442,6 +442,12 @@ static s32 vr_climb_seen;          // frames since the game last held the Kong o
 static f32 vr_climb_x, vr_climb_z; // where that was
 static s32 vr_grip_climbing;       // a grip holds on there
 static s32 vr_tree_cooldown;       // frames before the next let-go press
+#define VR_MAX_TREES 32
+static f32 vr_trees[VR_MAX_TREES][3]; // trunks (ladders, ledges) the game latched onto in this map
+static s32 vr_tree_count;
+static s32 vr_trees_map = -1;
+static s32 vr_vine_held;
+static s32 vr_drive_fallback_logged;
 
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
@@ -1237,10 +1243,44 @@ void vr_gorilla_pre_frame(void) {
         if (vr_tree_cooldown > 0) {
             vr_tree_cooldown--;
         }
+        if (current_map != vr_trees_map) {
+            vr_trees_map = current_map;
+            vr_tree_count = 0;
+        }
         if ((st == 13 || st == 66 || st == 93 || st == 94) && vr_tree_cooldown == 0 && vr_extra_frames == 0) {
+            // remember where it latched: a trunk (or ladder, ledge) the grips can hold from now on
+            s32 k, known = 0;
+            for (k = 0; k < vr_tree_count; k++) {
+                f32 dx = vr_trees[k][0] - player->x_position, dz = vr_trees[k][2] - player->z_position;
+                if (dx * dx + dz * dz < 15.0f * 15.0f) {
+                    known = 1;
+                    if (player->y_position < vr_trees[k][1]) {
+                        vr_trees[k][1] = player->y_position;
+                    }
+                }
+            }
+            if (!known && vr_tree_count < VR_MAX_TREES) {
+                vr_trees[vr_tree_count][0] = player->x_position;
+                vr_trees[vr_tree_count][1] = player->y_position;
+                vr_trees[vr_tree_count][2] = player->z_position;
+                vr_tree_count++;
+            }
             vr_press(GST_N64_Z, 3);
             vr_tree_cooldown = 15;
-            recomp_printf("[vr-loco] let go of the climb (state %d): the grips hold now\n", st);
+            recomp_printf("[vr-loco] let go of the climb (state %d): the grips hold now (%d known here)\n", st, vr_tree_count);
+        }
+        // Vines: the game swings you while a grip holds on; open both hands and it flings you (A)
+        if ((st == 87 || st == 88 || st == 99) && vr_extra_frames == 0) {
+            s32 holding = vr_hands.grip[0] > 0.6f || vr_hands.grip[1] > 0.6f;
+            if (holding) {
+                vr_vine_held = 1;
+            } else if (vr_vine_held && vr_hands.grip[0] < 0.4f && vr_hands.grip[1] < 0.4f) {
+                vr_vine_held = 0;
+                vr_press(GST_N64_A, 3);
+                recomp_printf("[vr-loco] let go of the vine: fling\n");
+            }
+        } else {
+            vr_vine_held = 0;
         }
     }
     if (vr_body_mode == VR_BODY_CLIMB && !vr_scripted) {
@@ -1254,6 +1294,33 @@ void vr_gorilla_pre_frame(void) {
         f32 dx = player->x_position - vr_climb_x, dz = player->z_position - vr_climb_z;
         s32 near = !vr_scripted && (vr_climb_seen > 0 || vr_grip_climbing) && (dx * dx + dz * dz < 40.0f * 40.0f);
         s32 g0 = vr_hands.grip[0] > 0.6f, g1 = vr_hands.grip[1] > 0.6f;
+        u8 st = player->control_state;
+        if (st == 87 || st == 88 || st == 99) {
+            near = 0;   // a vine: the game swings you (see above)
+        }
+        if (!near && !vr_scripted && (g0 || g1) && vr_tree_count > 0) {
+            // a hand closing on a known trunk holds, whenever (Gorilla Tag: grab and climb)
+            s32 h, k;
+            f32 best = 1e9f;
+            for (h = 0; h < 2; h++) {
+                if (!(h == 0 ? g0 : g1)) {
+                    continue;
+                }
+                for (k = 0; k < vr_tree_count; k++) {
+                    f32 hx = vr_loco.hand[h].pos.x - vr_trees[k][0], hz = vr_loco.hand[h].pos.z - vr_trees[k][2];
+                    f32 d2 = hx * hx + hz * hz;
+                    if (d2 < best) {
+                        best = d2;
+                    }
+                    if (d2 < 24.0f * 24.0f && vr_loco.hand[h].pos.y > vr_trees[k][1] - 15.0f) {
+                        near = 1;
+                    }
+                }
+            }
+            if (!vr_grip_climbing && (vr_frame % 15) == 0) {
+                recomp_printf("[vr-loco] grip: nearest known trunk %.0f units from the hand%s\n", vr_sqrt(best), near ? " (holds)" : "");
+            }
+        }
         if (near && (g0 || g1) && !vr_gun_drawn(player)) {
             if (!vr_grip_climbing) {
                 recomp_printf("[vr-loco] grip climbing\n");
@@ -1382,6 +1449,22 @@ void vr_gorilla_post_frame(void) {
     vr_frame++;
     vr_body.frame = vr_frame;
     vr_body.active = vr_active;
+    // Some states move the player without the movement step the patch replaces (surface swimming,
+    // for one): the hands' move this frame was then never applied, so apply it here instead.
+    if (vr_drive && vr_active && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
+        Actor *pl = character_change_array[0].playerPointer;
+        pl->x_position += vr_disp.x;
+        pl->y_position += vr_disp.y;
+        pl->z_position += vr_disp.z;
+        if (vr_loco.hand[0].touching || vr_loco.hand[1].touching || vr_in_water) {
+            pl->y_velocity = 0.0f;
+        }
+        if (!vr_drive_fallback_logged) {
+            vr_drive_fallback_logged = 1;
+            recomp_printf("[vr-loco] the game moved the player without its movement step (state %d): hands applied after\n", pl->control_state);
+        }
+        vr_drive = 0;
+    }
     if (!vr_active && vr_pov && character_change_array != NULL && character_change_array[0].playerPointer != NULL) {
         // a cutscene through the Kong's eyes: the eye point over the feet, sized as in play
         gtl_vec3 off;
