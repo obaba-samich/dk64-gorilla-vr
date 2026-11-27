@@ -382,3 +382,15 @@ Eighth headset test: still no trees or vines, transition animations broken, no b
   settled map and no pending warp. With the pointer fix alone one of two stress runs still crashed
   (inside the swap's model load), so the settle rule is the guard; more runs pending.
 Tests now run headless (the mirror off in the simulator's settings, so no window).
+
+### D44. Trees the Gorilla Tag way, easier barrels and flicks; the swap crash confirmed fixed
+Ninth headset test:
+- Trees: grips moved the body while the game kept the Kong in its own climb, which draws it
+  where the game holds it, so the Kong showed in front of you. Now on a tree, ladder or ledge
+  (13, 66, 93, 94) the game is made to let go (Z): one closed grip holds and moves freely, none
+  and you fall. Vines keep the game's swing.
+- Barrels: hands reach a barrel within 20 units (was 12) and objects to pick up within 26
+  (was 18).
+- Stick flicks: past ~55% in any direction, the closer of the four wins (was 70% on one axis).
+- With D43's swap fixes, two stress runs (40 warps, 14 forced swaps) had no crash; before them
+  3 of 4 crashed.

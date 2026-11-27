@@ -10,7 +10,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Test | How | Status |
 |---|---|---|
 | Locomotion core: 32 cases (stick, push, launch, cap, history, momentum carried into the next push, climb, walls, slip, ice, two hands, arm reach, water, frozen, reset, landing, head height, game-owned flight) | `tools/test.sh` | ✅ |
-| Gestures: 24 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
+| Gestures: 26 cases (adds: no crouch while a hand rows; left-stick flicks for all four actions, one per flick, off when the stick is busy or Tag Anywhere has left / right, still on with gestures off) (idle, slam, punch, head yaw, rowing isn't a punch, punch into a wall, double punch, gun draw at the hip only, fire, orange throw and late release, slow drop, instrument, twirl, duck, climb, left-handed) | `tools/test.sh` | ✅ |
 | VR host bridge tests (from astromaddie/dk64-vr), plus the arm-mode stick routing (turn and C-up / C-down on the left stick while the right one does abilities) | `tools/test.sh` | ✅ |
 | Core compiles for MIPS with no libc | `clang -target mips ... -nostdinc` in the patch build | ✅ |
 
@@ -55,6 +55,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Grip climbing (D41) | ✅ unit test | hold, pull up, let go and fall; no tree reached in the sim |
 | Hands collect items (D41) | ⬜ | builds and runs; no item reached in the sim |
 | Warp sweep with rowing (D41) | 🧪 | 3 runs: 5, 6, 9 and 11 places with arm locomotion driving, 50 throws; 2 crashes (heap: heapFreeDeferred in the resource list, and an animation load) right as a map's intro cutscene began after a warp; also seen once with no warp. Not tied to arm locomotion yet (one run with it off had no crash; too few). A crash in the first headset session predates this work. The crash report is in the log now |
+| Tag Anywhere swap under stress (D43) | 🧪 | forced swaps every 15 s during warp tours: 3 of 4 runs crashed before, 0 of 2 after (40 warps, 14 swaps) |
+| Trees: the game lets go, grips hold (D44) | 🧪 | the rowing ran into a tree (state 13) and the let-go fired; holding with grips only unit tested |
 | Hands into barrels (D39) | ⬜ | the jump starts and the body is held at a barrel; no open barrel in reach on the simulator's saves |
 | Left eye mirrored on the monitor (D39) | 🧪 | starts (`mirror: left eye on the desktop window`), clean exit; the window itself not looked at |
 | Head moves inside the body (D37) | ✅ unit test | head bobbing leaves the body still; crouching puts the hands on the floor |
