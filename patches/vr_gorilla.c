@@ -631,8 +631,12 @@ static void vr_setup_params(Actor *player) {
     vr_params.jump_multiplier = vr_hands.jump_multiplier * kb->launch;
     vr_params.max_jump_speed = vr_hands.max_jump_speed * vr_ws;
     vr_params.min_launch_speed = 0.4f * vr_ws;
-    vr_params.paddle_strength = 0.08f * 26.0f / vr_ws;   // quadratic: per metre, whatever the scale
-    vr_params.paddle_deadzone = 0.1f * vr_ws;
+    // swimming, MonkeSwim's numbers per metre: 0.2 m/s^2 of resistance, strokes build up to
+    // the throw cap (its 6.5 m/s), a stroke gives swim_accel x hand speed a second
+    vr_params.swim_accel = (vr_hands.swim_accel > 0.0f) ? vr_hands.swim_accel : 1.17f;
+    vr_params.swim_resistance = 0.2f * vr_ws;
+    vr_params.swim_max_speed = vr_params.max_jump_speed;
+    vr_params.paddle_deadzone = 0.015f * vr_ws;
     vr_params.unstick_distance = 1.0f * vr_ws;
     vr_params.history_frames = 3;
     vr_params.gravity = 0.0f;  // the game's own
@@ -1306,6 +1310,20 @@ void vr_gorilla_pre_frame(void) {
         if (has_water && (head_y < water_y || vr_surface_swim)) {
             in.mode = GTL_MODE_WATER;
             in.external_flight = 0;
+            // MonkeSwim strokes while its trigger is held; here a closed grip strokes (the
+            // triggers are the game's Z and R) and open hands reach back for free
+            in.hand_stroke[0] = vr_hands.grip[0] > 0.5f;
+            in.hand_stroke[1] = vr_hands.grip[1] > 0.5f;
+            in.stroke_always = !vr_hands.swim_grip;
+            {
+                // under water you swim where you look, up and down too (MonkeSwim's look is the
+                // head's forward); along the surface it stays flat
+                f32 up = vr_surface_swim ? 0.0f : vr_hands.head_look_up;
+                f32 flat = vr_sqrt(1.0f - up * up);
+                in.look.x *= flat;
+                in.look.z *= flat;
+                in.look.y = up;
+            }
             vr_params.gravity = 0.0f;
             vr_params.buoyancy = 0.0f;
             if (!vr_in_water) {

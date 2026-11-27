@@ -31,6 +31,21 @@ static gtl_vec3 vclamp_len(const gtl_world *w, gtl_vec3 a, float max_len) {
     return a;
 }
 
+/* MonkeSwim's TryUpdateAndClamp: add a push, but only while still short of the cap on the
+ * push's own side; a speed already past it (a throw) is never cut back. */
+static float add_clamped(float current, float delta, float max) {
+    if (max > 0.0f) {
+        if (max > current) {
+            current = (current + delta < max) ? current + delta : max;
+        }
+    } else if (max < 0.0f) {
+        if (max < current) {
+            current = (current + delta > max) ? current + delta : max;
+        }
+    }
+    return current;
+}
+
 void gtl_default_params(gtl_params *p) {
     /* Tuned for DK at the default world scale (15 units per metre). */
     p->body_radius = 4.0f;
@@ -51,11 +66,11 @@ void gtl_default_params(gtl_params *p) {
     p->unstick_distance = 3.0f;
     p->slip_threshold = 0.95f;
 
-    p->paddle_strength = 0.08f;
-    p->paddle_linear = 2.0f;
+    p->swim_accel = 1.17f;
+    p->swim_resistance = 0.2f * 15.0f;
+    p->swim_max_speed = 6.5f * 15.0f;
     p->paddle_look = 0.2f;
-    p->paddle_deadzone = 3.0f;
-    p->water_drag = 1.5f;
+    p->paddle_deadzone = 0.015f * 15.0f;
     p->buoyancy = 150.0f;
 
     p->max_slide_iterations = 4;
@@ -202,7 +217,8 @@ void gtl_reset(gtl_state *s, gtl_vec3 body_world, const gtl_input *in) {
         s->hand[h].slip = 0.0f;
         s->hand[h].surface = 0;
         s->hand[h].normal = v3(0, 1, 0);
-        s->hand[h].last_rel = in ? vsub(in->hand[h], in->head) : v3(0, 0, 0);
+        s->hand[h].last_ctrl = in ? in->hand[h] : v3(0, 0, 0);
+        s->hand[h].stroking = 0;
     }
     s->initialised = 1;
 }
@@ -326,7 +342,8 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
             s->hand[h].pos = hand_target(w, p, s, in, h);
             s->hand[h].touching = 0;
             s->hand[h].was_touching = 0;
-            s->hand[h].last_rel = vsub(in->hand[h], in->head);
+            s->hand[h].last_ctrl = in->hand[h];
+            s->hand[h].stroking = 0;
         }
         return;
     }
@@ -361,31 +378,46 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
     }
 
     if (in->mode == GTL_MODE_WATER) {
-        /* paddling: moving a hand through water pushes you the other way. Drag goes with speed
-         * squared, so a quick stroke back and a slow reach forward nets forward motion. */
         for (h = 0; h < 2; h++) {
-            if (in->hand_enabled[h] && !s->hand[h].touching) {
-                gtl_vec3 rel = vsub(in->hand[h], in->head);
-                gtl_vec3 hv = vmul(vsub(rel, s->hand[h].last_rel), 1.0f / dt);
-                float sp = vlen(w, hv);
-                gtl_vec3 dir;
-                float dl;
-                if (sp <= p->paddle_deadzone) {
-                    continue;
-                }
-                /* push against the stroke, leaning a little towards the look */
-                dir = vadd(vmul(hv, -1.0f / sp), vmul(in->look, p->paddle_look));
-                dl = vlen(w, dir);
-                if (dl < GTL_EPS) {
-                    continue;
-                }
-                dir = vmul(dir, 1.0f / dl);
-                s->velocity = vadd(s->velocity, vmul(dir, (p->paddle_linear * sp + p->paddle_strength * sp * sp) * dt));
+            gtl_hand *hd = &s->hand[h];
+            /* the hand's way back is the body's way forward */
+            gtl_vec3 raw = vsub(hd->last_ctrl, in->hand[h]);
+            float moved = vlen(w, raw);
+            gtl_vec3 dir;
+            float sp, dl;
+            if (!in->hand_enabled[h] || hd->touching || !(in->hand_stroke[h] || in->stroke_always)
+                || moved > p->arm_length) {
+                hd->stroking = 0;   /* released (or a tracking jump): the next stroke starts fresh */
+                continue;
             }
+            if (!hd->stroking || in->stroke_always) {
+                hd->stroking = 1;
+                hd->stroke_sum = raw;
+            } else {
+                hd->stroke_sum = vadd(hd->stroke_sum, vmul(raw, 0.5f));
+            }
+            sp = moved / dt;
+            dl = vlen(w, hd->stroke_sum);
+            if (sp <= p->paddle_deadzone || dl < GTL_EPS) {
+                continue;
+            }
+            dir = vadd(vmul(hd->stroke_sum, 1.0f / dl), vmul(in->look, p->paddle_look));
+            dl = vlen(w, dir);
+            if (dl < GTL_EPS) {
+                continue;
+            }
+            dir = vmul(dir, 1.0f / dl);
+            s->velocity.x = add_clamped(s->velocity.x, dir.x * p->swim_accel * sp * dt, dir.x * p->swim_max_speed);
+            s->velocity.y = add_clamped(s->velocity.y, dir.y * p->swim_accel * sp * dt, dir.y * p->swim_max_speed);
+            s->velocity.z = add_clamped(s->velocity.z, dir.z * p->swim_accel * sp * dt, dir.z * p->swim_max_speed);
         }
-        s->velocity = vclamp_len(w, s->velocity, p->max_jump_speed);
         s->velocity = vadd(s->velocity, v3(0, (p->buoyancy - p->gravity) * dt, 0));
-        s->velocity = vmul(s->velocity, 1.0f / (1.0f + p->water_drag * dt));
+        {
+            /* the water's constant slow-down (Vector3.MoveTowards(v, 0, resistance x dt)) */
+            float v = vlen(w, s->velocity);
+            float slow = p->swim_resistance * dt;
+            s->velocity = (v <= slow) ? v3(0, 0, 0) : vmul(s->velocity, (v - slow) / v);
+        }
     }
 
     if (pulling > 0) {
@@ -483,7 +515,7 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
         ev->landed = 1;
     }
     for (h = 0; h < 2; h++) {
-        s->hand[h].last_rel = vsub(in->hand[h], in->head);
+        s->hand[h].last_ctrl = in->hand[h];
     }
     s->origin = vsub(s->body, in->head);
     (void)before;

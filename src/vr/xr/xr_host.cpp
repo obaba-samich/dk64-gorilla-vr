@@ -2658,6 +2658,7 @@ private:
         h.head[1] = 0.5f * (a.y + b.y);
         h.head[2] = 0.5f * (a.z + b.z);
         h.head_yaw = quatYaw(headInOriginQ);
+        h.head_look_up = std::clamp(quatRotate(headInOriginQ, Vec3 { 0.0f, 0.0f, -1.0f }).y, -1.0f, 1.0f);
         for (int i = 0; i < 2; i++) {
             Pose aim;
             if (input.aimPose(i, aim)) {
@@ -2719,9 +2720,11 @@ private:
                     h.hand[i][0] = h.head[0] + (i == 0 ? -0.3f : 0.3f);
                     h.hand[i][1] = h.head[1] - 0.35f;
                     h.hand[i][2] = h.head[2] + z;
+                    h.grip[i] = (ph < 0.3f) ? 1.0f : 0.0f;   // the pull strokes, the reach doesn't
                 }
                 h.valid = 1;
                 h.diag_climb = 2;   // the game side: find water and drop in
+                diagClimb = true;   // keep the scripted grips
             }
         }
         bool diagGestures = false;
@@ -2825,6 +2828,8 @@ private:
         h.duck_crouch = (setting("duck_crouch") != 0.0) ? 1 : 0;
         h.tag_anywhere = (setting("tag_anywhere") != 0.0) ? 1 : 0;
         h.real_arms = (setting("real_arms") != 0.0) ? 1 : 0;
+        h.swim_grip = (setting("swim_grip") != 0.0) ? 1 : 0;
+        h.swim_accel = float(setting("swim_accel"));
         // a counter, so the game (30 Hz) can't miss one between display frames
         h.diag_tag = 0;
         if ((setting("diag_tag_anywhere") > 0.0) && (diagGorillaStartS != 0.0)) {

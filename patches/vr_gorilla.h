@@ -39,6 +39,9 @@ typedef struct VrHands {
     s32 pov_choice;
     s32 diag_climb;
     s32 real_arms;
+    f32 head_look_up;
+    s32 swim_grip;
+    f32 swim_accel;
 } VrHands;
 
 typedef struct VrBody {

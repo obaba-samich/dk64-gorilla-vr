@@ -419,33 +419,97 @@ static void test_disabled_hand_does_not_grip(void) {
 }
 
 static void test_water_paddle(void) {
+    /* MonkeSwim: pull back with the hand closed, reach forward open: forward */
     rig r;
     int i;
     rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
     r.in.mode = GTL_MODE_WATER;
     rig_start(&r, V(0, 50, 0));
-    /* breaststroke: fast push back, slow reach forward */
     for (i = 0; i < 6; i++) {
-        rig_step(&r, 8, V(0, 0, -1.0f), V(0, 0, -1.0f), Z3);
-        rig_step(&r, 32, V(0, 0, 0.25f), V(0, 0, 0.25f), Z3);
+        r.in.hand_stroke[0] = r.in.hand_stroke[1] = 1;
+        rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
+        r.in.hand_stroke[0] = r.in.hand_stroke[1] = 0;
+        rig_step(&r, 16, V(0, 0, 0.5f), V(0, 0, 0.5f), Z3);
     }
-    CHECK(r.s.body.z > 10.0f, "strokes should swim us forward, z %f", r.s.body.z);
+    CHECK(r.s.body.z > 20.0f, "strokes should swim us forward, z %f", r.s.body.z);
     CHECK(fabsf(r.s.body.y - 50.0f) < 2.0f, "neutral buoyancy, y %f", r.s.body.y);
 }
 
-static void test_water_look_assist(void) {
-    /* even strokes back and forth (no fast power stroke) still swim where you look */
+static void test_water_open_hands_dont_swim(void) {
+    rig r;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    rig_start(&r, V(0, 50, 0));
+    rig_step(&r, 32, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
+    CHECK(fabsf(r.s.body.z) < 0.01f, "open hands moved us, z %f", r.s.body.z);
+}
+
+static void test_water_glides(void) {
+    /* one stroke, then the water slows you only a little at a time */
+    rig r;
+    float v0;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    rig_start(&r, V(0, 50, 0));
+    r.in.hand_stroke[0] = r.in.hand_stroke[1] = 1;
+    rig_step(&r, 20, V(0, 0, -0.6f), V(0, 0, -0.6f), Z3);
+    r.in.hand_stroke[0] = r.in.hand_stroke[1] = 0;
+    rig_step(&r, 1, Z3, Z3, Z3);
+    v0 = r.s.velocity.z;
+    rig_step(&r, 90, Z3, Z3, Z3);
+    CHECK(v0 > 10.0f, "a stroke should give speed, %f", v0);
+    CHECK(r.s.velocity.z > v0 - r.p.swim_resistance * 1.05f && r.s.velocity.z < v0, "glide %f -> %f", v0, r.s.velocity.z);
+}
+
+static void test_water_speed_cap(void) {
     rig r;
     int i;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    rig_start(&r, V(0, 50, 0));
+    for (i = 0; i < 20; i++) {
+        r.in.hand_stroke[0] = r.in.hand_stroke[1] = 1;
+        rig_step(&r, 6, V(0, 0, -3.0f), V(0, 0, -3.0f), Z3);
+        r.in.hand_stroke[0] = r.in.hand_stroke[1] = 0;
+        rig_step(&r, 6, V(0, 0, 3.0f), V(0, 0, 3.0f), Z3);
+    }
+    CHECK(r.s.velocity.z <= r.p.swim_max_speed + 0.01f, "past the cap: %f", r.s.velocity.z);
+    CHECK(r.s.velocity.z > 0.8f * r.p.swim_max_speed, "hard strokes should reach near the cap: %f", r.s.velocity.z);
+}
+
+static void test_water_stroke_direction_averages(void) {
+    /* a stroke straight back with a sideways wobble at its end still pushes mostly forward */
+    rig r;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    rig_start(&r, V(0, 50, 0));
+    r.in.hand_stroke[0] = 1;
+    rig_step(&r, 20, V(0, 0, -0.5f), Z3, Z3);
+    rig_step(&r, 4, V(-0.5f, 0, 0), Z3, Z3);
+    CHECK(r.s.velocity.z > 3.0f * fabsf(r.s.velocity.x), "wobble steered: vx %f vz %f", r.s.velocity.x, r.s.velocity.z);
+}
+
+static void test_water_look_assist(void) {
+    /* a stroke out to the side leans towards where you look */
+    rig r;
     rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
     r.in.mode = GTL_MODE_WATER;
     r.in.look = V(0, 0, 1);
     rig_start(&r, V(0, 50, 0));
-    for (i = 0; i < 6; i++) {
-        rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
-        rig_step(&r, 16, V(0, 0, 0.5f), V(0, 0, 0.5f), Z3);
-    }
-    CHECK(r.s.body.z > 3.0f, "strokes should head where we look, z %f", r.s.body.z);
+    r.in.hand_stroke[1] = 1;
+    rig_step(&r, 20, Z3, V(-0.5f, 0, 0), Z3);
+    CHECK(r.s.velocity.x > 0.0f && r.s.velocity.z > 0.1f * r.s.velocity.x, "no lean to the look: %f %f", r.s.velocity.x, r.s.velocity.z);
+}
+
+static void test_water_stroke_always(void) {
+    /* no button: every movement strokes */
+    rig r;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    r.in.stroke_always = 1;
+    rig_start(&r, V(0, 50, 0));
+    rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
+    CHECK(r.s.velocity.z > 5.0f, "stroke_always should swim, vz %f", r.s.velocity.z);
 }
 
 static void test_water_still_is_still(void) {
@@ -589,6 +653,11 @@ int main(void) {
         { "disabled hand does not grip", test_disabled_hand_does_not_grip },
         { "water paddle", test_water_paddle },
         { "water look assist", test_water_look_assist },
+        { "water open hands don't swim", test_water_open_hands_dont_swim },
+        { "water glides", test_water_glides },
+        { "water speed cap", test_water_speed_cap },
+        { "water stroke direction averages", test_water_stroke_direction_averages },
+        { "water stroke always", test_water_stroke_always },
         { "still water is still", test_water_still_is_still },
         { "frozen mode", test_frozen_mode },
         { "reset teleports", test_reset_teleports },

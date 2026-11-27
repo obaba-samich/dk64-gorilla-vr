@@ -64,14 +64,19 @@ typedef struct gtl_params {
     float unstick_distance;    /* a stuck hand lets go once the controller is this far from it */
     float slip_threshold;      /* surfaces with slip >= this never grip */
 
-    /* Water */
-    float paddle_strength;     /* water push per (hand speed)^2; quadratic so slow recovery
-                                  strokes cost less than fast power strokes */
-    float paddle_linear;       /* plus a push per (hand speed), 1/s: gentle strokes move you too */
-    float paddle_look;         /* each stroke also pushes this much (fraction) towards where you
-                                  look, so swimming heads where you face (MonkeSwim does this) */
-    float paddle_deadzone;     /* hand speeds below this (units/s) don't paddle (tracking noise) */
-    float water_drag;          /* 1/s */
+    /* Water: MonkeSwim's stroke (github.com/AHauntedArmy/MonkeSwim, GPL-3.0, SwimManager.cs and
+     * SwimHandTracker.cs). A hand moving through the water while it strokes pushes the body the
+     * opposite way, by swim_accel x its speed; the stroke's direction is its running average
+     * since the stroke began (so a wobble mid-stroke doesn't steer), leaned towards the look.
+     * Speed only ever builds towards swim_max_speed along the push (per axis, like its
+     * TryUpdateAndClamp), and the water takes off a constant swim_resistance: you glide. */
+    float swim_accel;          /* 1/s: velocity gained per second per (hand speed); MonkeSwim's
+                                  1.3 x 0.01 per physics step, at 90 steps a second */
+    float swim_resistance;     /* units/s^2, constant slow-down (MonkeSwim 0.2 m/s^2) */
+    float swim_max_speed;      /* units/s, strokes add speed only up to this (MonkeSwim 6.5 m/s) */
+    float paddle_look;         /* each stroke leans this much (fraction) towards where you
+                                  look, so swimming heads where you face (MonkeSwim: 0.2) */
+    float paddle_deadzone;     /* hand speeds below this (units/s) don't stroke (tracking noise) */
     float buoyancy;            /* units/s^2 upwards while in water, offsets gravity */
 
     int max_slide_iterations;
@@ -92,6 +97,10 @@ typedef struct gtl_input {
     int hand_hold[2];          /* the grip holds this hand where it is, surface or not (a tree, a
                                   ladder, a vine the caller says is in reach); pulls move the body */
     gtl_vec3 look;             /* where the head faces, unit length (zero: no look assist) */
+    int hand_stroke[2];        /* water: this hand strokes now (MonkeSwim: trigger held; ours: the
+                                  grip). The stroke's direction averages from when it began */
+    int stroke_always;         /* water: every hand movement strokes, no button (each frame its
+                                  own direction, so even strokes back and forth cancel) */
     int mode;
     int external_flight;       /* the game owns gravity and free flight: when no hand holds,
                                   only room-scale moves the body and a release just reports
@@ -106,7 +115,9 @@ typedef struct gtl_hand {
     float slip;
     int surface;
     gtl_vec3 normal;
-    gtl_vec3 last_rel;         /* controller relative to the head last step, for paddling */
+    gtl_vec3 last_ctrl;        /* controller last step (play space), for swimming */
+    int stroking;              /* a swim stroke is going on */
+    gtl_vec3 stroke_sum;       /* its direction so far (MonkeSwim's smoothed direction) */
 } gtl_hand;
 
 typedef struct gtl_state {
