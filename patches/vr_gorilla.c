@@ -441,6 +441,7 @@ static f32 vr_water_lift;          // eyes raised over the water while swimming 
 static s32 vr_climb_seen;          // frames since the game last held the Kong on something
 static f32 vr_climb_x, vr_climb_z; // where that was
 static s32 vr_grip_climbing;       // a grip holds on there
+static s32 vr_tree_cooldown;       // frames before the next let-go press
 
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
@@ -950,8 +951,8 @@ static void vr_hand_barrels(Actor *player) {
             // a barrel stands on its position, about DK's height tall
             f32 dx = vr_loco.hand[h].pos.x - a->x_position, dz = vr_loco.hand[h].pos.z - a->z_position;
             f32 dy = vr_loco.hand[h].pos.y - a->y_position;
-            f32 r = 12.0f + vr_params.hand_radius;
-            if (dx * dx + dz * dz < r * r && dy > -4.0f && dy < 32.0f) {
+            f32 r = 20.0f + vr_params.hand_radius;   // generous: a hand anywhere on or near it
+            if (dx * dx + dz * dz < r * r && dy > -10.0f && dy < 45.0f) {
                 recomp_printf("[vr-loco] hand %d on a barrel (actor type %d): jump in\n", h, a->unk58);
                 vr_barrel_target = a;
                 vr_barrel_hold = 30;
@@ -1011,7 +1012,7 @@ static void vr_hand_carry(Actor *player) {
                 dx = vr_loco.hand[h].pos.x - a->x_position;
                 dz = vr_loco.hand[h].pos.z - a->z_position;
                 dy = vr_loco.hand[h].pos.y - a->y_position;
-                if (dx * dx + dz * dz < 18.0f * 18.0f && dy > -6.0f && dy < 36.0f) {
+                if (dx * dx + dz * dz < 26.0f * 26.0f && dy > -12.0f && dy < 42.0f) {
                     player->y_rotation = vr_heading_to_game(vr_atan2(a->x_position - player->x_position, a->z_position - player->z_position));
                     vr_press(GST_N64_B, 3);
                     recomp_printf("[vr-loco] hand %d picks up actor type %d\n", h, a->unk58);
@@ -1226,6 +1227,22 @@ void vr_gorilla_pre_frame(void) {
     // The game holds the Kong off the ground itself: a tree, rope, vine (states 87 / 88), ladder or
     // ledge. Anything off the ground that isn't a jump or a fall counts (the newer decomp's state
     // names don't match the real numbers, so there's no list of climbing states to go by).
+    // Gorilla Tag on trees, ladders and ledges: the game doesn't hold the Kong, your grips do. The
+    // moment it latches on (13 tree / ladder, 66 hang, 93 climb top, 94 ladder slide) it's made to
+    // let go (Z); a closed grip then holds and climbs, and with none the Kong falls. (Holding on in
+    // the game's own climb while the grips moved the body drew the Kong where the game kept it,
+    // on the tree, in view.) Vines keep the game's swing.
+    {
+        u8 st = player->control_state;
+        if (vr_tree_cooldown > 0) {
+            vr_tree_cooldown--;
+        }
+        if ((st == 13 || st == 66 || st == 93 || st == 94) && vr_tree_cooldown == 0 && vr_extra_frames == 0) {
+            vr_press(GST_N64_Z, 3);
+            vr_tree_cooldown = 15;
+            recomp_printf("[vr-loco] let go of the climb (state %d): the grips hold now\n", st);
+        }
+    }
     if (vr_body_mode == VR_BODY_CLIMB && !vr_scripted) {
         vr_climb_seen = 90;                    // three seconds to start gripping after it lets go
         vr_climb_x = player->x_position;
