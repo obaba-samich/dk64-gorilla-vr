@@ -1464,8 +1464,13 @@ static gtl_vec3 vr_v3norm(gtl_vec3 a, gtl_vec3 fallback) {
     return (l > 1e-4f) ? vr_v3mul(a, 1.0f / l) : fallback;
 }
 
-// One box: centre c, half-extent axes ax, ay, az (right-handed, any lengths).
-static Gfx *vr_draw_box(Gfx *dl, s32 buf, s32 *n, u32 rgba, s32 bright, gtl_vec3 c, gtl_vec3 ax, gtl_vec3 ay, gtl_vec3 az) {
+// Interpolation tags for the arm and hand boxes (one per box slot), so RT64 moves them smoothly
+// between game frames at the headset's rate instead of in 30 Hz steps.
+#define VR_MTXTAG_HANDS 0x7E0000
+
+// One box: centre c, half-extent axes ax, ay, az (right-handed, any lengths). slot: a stable
+// number per box, for its interpolation tag.
+static Gfx *vr_draw_box(Gfx *dl, s32 buf, s32 *n, s32 slot, u32 rgba, s32 bright, gtl_vec3 c, gtl_vec3 ax, gtl_vec3 ay, gtl_vec3 az) {
     f32 m[4][4];
     Vtx *v;
     Mtx *mx;
@@ -1481,6 +1486,11 @@ static Gfx *vr_draw_box(Gfx *dl, s32 buf, s32 *n, u32 rgba, s32 bright, gtl_vec3
     m[2][0] = az.x / VR_HAND_UNIT; m[2][1] = az.y / VR_HAND_UNIT; m[2][2] = az.z / VR_HAND_UNIT; m[2][3] = 0.0f;
     m[3][0] = c.x; m[3][1] = c.y; m[3][2] = c.z; m[3][3] = 1.0f;
     guMtxF2L(m, mx);
+    if (skip_interpolation) {
+        gEXMatrixGroupSkipAll(dl++, VR_MTXTAG_HANDS + slot, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+    } else {
+        gEXMatrixGroupSimpleNormal(dl++, VR_MTXTAG_HANDS + slot, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+    }
     gSPMatrix(dl++, osVirtualToPhysical(mx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
     gSPVertex(dl++, osVirtualToPhysical(v), 8, 0);
     gSP2Triangles(dl++, 0, 2, 1, 0, 0, 3, 2, 0);
@@ -1489,11 +1499,12 @@ static Gfx *vr_draw_box(Gfx *dl, s32 buf, s32 *n, u32 rgba, s32 bright, gtl_vec3
     gSP2Triangles(dl++, 3, 7, 6, 0, 3, 6, 2, 0);
     gSP2Triangles(dl++, 0, 4, 7, 0, 0, 7, 3, 0);
     gSP2Triangles(dl++, 1, 2, 6, 0, 1, 6, 5, 0);
+    gEXPopMatrixGroup(dl++, G_MTX_MODELVIEW);
     return dl;
 }
 
 // A limb from a to b, thickness t (half), with `side` as its sideways axis.
-static Gfx *vr_draw_limb(Gfx *dl, s32 buf, s32 *n, u32 rgba, gtl_vec3 a, gtl_vec3 b, f32 t, gtl_vec3 side) {
+static Gfx *vr_draw_limb(Gfx *dl, s32 buf, s32 *n, s32 slot, u32 rgba, gtl_vec3 a, gtl_vec3 b, f32 t, gtl_vec3 side) {
     gtl_vec3 d = vr_v3sub(b, a);
     f32 len = vr_v3len(d);
     gtl_vec3 z, x, y;
@@ -1503,7 +1514,7 @@ static Gfx *vr_draw_limb(Gfx *dl, s32 buf, s32 *n, u32 rgba, gtl_vec3 a, gtl_vec
     z = vr_v3mul(d, 1.0f / len);
     x = vr_v3norm(vr_v3sub(side, vr_v3mul(z, vr_v3dot(side, z))), vr_v3(1.0f, 0.0f, 0.0f));
     y = vr_v3cross(z, x);
-    return vr_draw_box(dl, buf, n, rgba, 0, vr_v3mul(vr_v3add(a, b), 0.5f), vr_v3mul(x, t), vr_v3mul(y, t), vr_v3mul(z, len * 0.5f + t * 0.3f));
+    return vr_draw_box(dl, buf, n, slot, rgba, 0, vr_v3mul(vr_v3add(a, b), 0.5f), vr_v3mul(x, t), vr_v3mul(y, t), vr_v3mul(z, len * 0.5f + t * 0.3f));
 }
 
 // Gorilla Tag-style arms: shoulder, elbow (bent out and down, two-bone reach), hand. The hand is a
@@ -1547,6 +1558,12 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
         gtl_vec3 head = vr_v3add(vr_loco.body, vr_v3(0.0f, vr_params.head_height + vr_loco.last_head.y, 0.0f));
         gtl_vec3 sh = vr_v3add(vr_v3add(head, vr_v3mul(right, side * 0.18f * ws)), vr_v3(0.0f, -0.24f * ws, 0.0f));
         gtl_vec3 hand = vr_loco.hand[h].pos;
+        if (!vr_loco.hand[h].touching) {
+            // a free hand is drawn a little ahead along its motion: it reaches the eyes a frame
+            // or so after it was sampled (held hands stay exactly where they hold)
+            gtl_vec3 v = vr_play_to_world(vr_hands.hand_vel[h], vr_ws * vr_hands.arm_scale);
+            hand = vr_v3add(hand, vr_v3mul(v, 0.045f));
+        }
         gtl_vec3 d = vr_v3sub(hand, sh);
         f32 dist = vr_v3len(d);
         f32 seg = 0.36f * ws * vr_hands.arm_scale;   // upper arm = forearm
@@ -1563,22 +1580,22 @@ Gfx *vr_gorilla_draw_hands(Gfx *dl) {
         bend = vr_v3norm(vr_v3sub(bend, vr_v3mul(dir, vr_v3dot(bend, dir))), right);
         elbow = vr_v3add(vr_v3add(sh, vr_v3mul(d, 0.5f)), vr_v3mul(bend, out));
 
-        dl = vr_draw_limb(dl, buf, &n, fur, sh, elbow, hr * 0.95f, right);
-        dl = vr_draw_limb(dl, buf, &n, fur, elbow, hand, hr * 0.8f, right);
+        dl = vr_draw_limb(dl, buf, &n, h * 5 + 0, fur, sh, elbow, hr * 0.95f, right);
+        dl = vr_draw_limb(dl, buf, &n, h * 5 + 1, fur, elbow, hand, hr * 0.8f, right);
 
         // the hand: forward along the controller's aim, palm down-ish
         aim = vr_v3norm(vr_play_to_world(vr_hands.hand_dir[h], 1.0f), fwd);
         palm_side = vr_v3norm(vr_v3cross(up, aim), vr_v3mul(right, -1.0f));   // the hand's left
         palm_up = vr_v3cross(aim, palm_side);
         // palm
-        dl = vr_draw_box(dl, buf, &n, skin, on, hand, vr_v3mul(palm_side, hr * 1.0f), vr_v3mul(palm_up, hr * 0.45f),
+        dl = vr_draw_box(dl, buf, &n, h * 5 + 2, skin, on, hand, vr_v3mul(palm_side, hr * 1.0f), vr_v3mul(palm_up, hr * 0.45f),
             vr_v3mul(aim, hr * 0.9f));
         // fingers, curled forward and a little down
-        dl = vr_draw_box(dl, buf, &n, skin, on,
+        dl = vr_draw_box(dl, buf, &n, h * 5 + 3, skin, on,
             vr_v3add(vr_v3add(hand, vr_v3mul(aim, hr * 1.55f)), vr_v3mul(palm_up, -hr * 0.25f)),
             vr_v3mul(palm_side, hr * 0.95f), vr_v3mul(palm_up, hr * 0.35f), vr_v3mul(aim, hr * 0.6f));
         // thumb, on the inner side (palm_side points to the hand's left)
-        dl = vr_draw_box(dl, buf, &n, skin, on,
+        dl = vr_draw_box(dl, buf, &n, h * 5 + 4, skin, on,
             vr_v3add(vr_v3add(hand, vr_v3mul(palm_side, side * hr * 1.15f)), vr_v3mul(aim, hr * 0.5f)),
             vr_v3mul(palm_side, hr * 0.3f), vr_v3mul(palm_up, hr * 0.3f), vr_v3mul(aim, hr * 0.55f));
     }
