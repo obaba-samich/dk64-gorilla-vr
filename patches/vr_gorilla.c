@@ -810,6 +810,99 @@ static void vr_test_requests(Actor *player) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Hands into barrels. The game only lets the player's body enter a barrel (Tag Barrels, bonus
+// and training barrels, blast barrels, Mini Monkey / Hunky Chunky / Strong Kong / Orangstand
+// barrels). In Gorilla Tag you'd reach out and touch it, so a hand that touches one puts the
+// body in it the way a jump would: the game lets a barrel take the player only while a jump
+// animation is playing (the player's interaction type comes from its animation frames), so the
+// hand starts a jump (A, from the host) and the body is held at the barrel's centre until the
+// barrel takes it (Tag Barrel state 7, a bonus barrel's map change) or a second passes.
+
+extern Actor *actor_list[256];
+extern s16 actor_count;
+static s32 vr_barrel_cooldown;
+static Actor *vr_barrel_target;  // the barrel a hand touched
+static s32 vr_barrel_hold;        // frames left holding the body in it
+
+static s32 vr_is_barrel(s32 type) {
+    switch (type) {
+        case ACTOR_TAG_BARREL:
+        case ACTOR_BONUS_BARREL:
+        case ACTOR_BONUS_BARREL_HELM:
+        case ACTOR_BONUS_TRAINING:
+        case ACTOR_CANNON_BARREL:
+        case ACTOR_MINI_MONKEY_BARREL:
+        case ACTOR_HUNKY_CHUNKY_BARREL:
+        case ACTOR_HUNKY_CHUNKY_BARREL_DOGADON:
+        case ACTOR_STRONG_KONG_BARREL:
+        case ACTOR_ORANGSTAND_SPRINT_BARREL:
+        case ACTOR_ROCKETBARREL:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static void vr_hand_barrels(Actor *player) {
+    s32 i, h, n = actor_count;
+    if (vr_barrel_hold > 0) {
+        Actor *a = vr_barrel_target;
+        s32 alive = 0;
+        for (i = 0; i < n && i < 256; i++) {
+            if (actor_list[i] == a) {
+                alive = 1;
+            }
+        }
+        vr_barrel_hold--;
+        if (!alive || vr_in_tag_barrel(player) || vr_barrel_hold == 0) {
+            recomp_printf("[vr-loco] barrel %s\n", vr_in_tag_barrel(player) ? "took us" : (alive ? "didn't take us" : "gone (taken)"));
+            vr_barrel_hold = 0;
+            vr_barrel_target = NULL;
+            return;
+        }
+        // in the jump, held at its centre so its box and ours overlap
+        player->x_position = a->x_position;
+        player->y_position = a->y_position + 8.0f;
+        player->z_position = a->z_position;
+        player->unkB8 = 0.0f;
+        return;
+    }
+    if (vr_barrel_cooldown > 0) {
+        vr_barrel_cooldown--;
+        return;
+    }
+    if (n > 256) {
+        n = 256;
+    }
+    for (i = 0; i < n; i++) {
+        Actor *a = actor_list[i];
+        if (a == NULL || a == player || (u32)a == 0xFFFFFFFF || !vr_is_barrel(a->unk58)) {
+            continue;
+        }
+        // hidden (state 0x14) or not taking anyone right now (interaction type isn't 1)
+        if (a->control_state == 0x14 || !(a->interactable & 1)) {
+            continue;
+        }
+        for (h = 0; h < 2; h++) {
+            // a barrel stands on its position, about DK's height tall
+            f32 dx = vr_loco.hand[h].pos.x - a->x_position, dz = vr_loco.hand[h].pos.z - a->z_position;
+            f32 dy = vr_loco.hand[h].pos.y - a->y_position;
+            f32 r = 12.0f + vr_params.hand_radius;
+            if (dx * dx + dz * dz < r * r && dy > -4.0f && dy < 32.0f) {
+                recomp_printf("[vr-loco] hand %d on a barrel (actor type %d): jump in\n", h, a->unk58);
+                vr_barrel_target = a;
+                vr_barrel_hold = 30;
+                vr_barrel_cooldown = 45;
+                vr_launch_count++;     // the host's short A press: the jump
+                vr_fly_end("into a barrel");
+                vr_initialised = 0;    // the hands start fresh wherever the barrel takes us
+                return;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Cutscenes through the Kong's eyes (immersive cutscenes only). A right stick click switches any
 // cutscene between the game's camera and first person; the shops' (Cranky, Funky, Candy, Snide)
 // start in first person with `cutscene_pov` on. The view faces the way the Kong faced when it
@@ -1043,6 +1136,7 @@ void vr_gorilla_pre_frame(void) {
         // the movement patch puts the body here; next frame shows what the game did to it
         vr_fly_expect = vr_loco.body;
     }
+    vr_hand_barrels(player);
     vr_gorilla_gestures(player, &in, dt);
     vr_tag_anywhere(player);
     if (!(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching && !vr_in_water) {
