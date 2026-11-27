@@ -399,12 +399,39 @@ static gtl_vec3 vr_play_to_world(const f32 v[3], f32 k) {
 // instead (see vr_update_climb).
 // (VR_STATE_NORMAL and VR_STATE_AIR are defined with the throw state above.)
 
+// Player states (the real numbers, which the newer decomp's state table lines up with from these
+// observations: 78 / 79 swimming, 87 / 88 a vine, 103 cutscene idle, 66 a frozen hang, 71-77
+// carrying something).
+// The game holds the Kong on something climbable: a ladder or tree (13), a frozen hang (66), a
+// vine (87, 88, 99), the top of a climb (93), sliding down a ladder (94). The arms don't push it
+// off; a closed grip climbs.
+static s32 vr_state_climb(u8 st) {
+    return st == 13 || st == 66 || st == 87 || st == 88 || st == 93 || st == 94 || st == 99;
+}
+// The game runs the Kong itself: walking into a scene, a barrel's enter / leave and blasts, tag
+// pads, knockbacks, death, exits, cutscene holds, dialogue. The arms stay out of it entirely.
+static s32 vr_state_scripted(u8 st) {
+    switch (st) {
+        case 44: case 65: case 82: case 83: case 84: case 85: case 89: case 90: case 103: case 104:
+        case 106: case 112: case 113: case 114: case 115: case 116: case 118: case 119: case 121:
+        case 122: case 123: case 131: case 132: case 133: case 134:
+            return 1;
+        default:
+            return 0;
+    }
+}
+// Carrying something (a barrel, a boulder, a vase...): picking up, walking, putting down, throwing.
+static s32 vr_state_carrying(u8 st) {
+    return st >= 70 && st <= 77;
+}
+
 static s32 vr_in_tag_barrel(Actor *player) {
     u8 st = player->control_state;
     return st == 7 || st == 0xA || st == 0xB;
 }
 
 static s32 vr_body_mode;
+static s32 vr_scripted;            // the game runs the Kong itself this frame (vr_state_scripted)
 static s32 vr_body_mode_logged = -1;
 static s32 vr_hang_frames;         // frames off the ground with no vertical speed and no hand held
 static s32 vr_air_frames;          // frames off the ground with no hand on anything
@@ -418,6 +445,7 @@ static s32 vr_grip_climbing;       // a grip holds on there
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
     vr_body_mode = VR_BODY_OFF;
+    vr_scripted = 0;
     if (!vr_hands.valid || !vr_hands.gorilla || player == NULL) {
         return 0;
     }
@@ -443,9 +471,11 @@ static s32 vr_should_drive(Actor *player) {
         vr_body_mode = VR_BODY_BARREL;
         return 0;
     }
-    // Hanging on a vine, rope, tree, ladder or ledge: off the ground, not falling, nothing held
-    // by the hands, for a few frames. First person stays; the hands climb instead of driving.
-    vr_body_mode = (vr_hang_frames >= 6) ? VR_BODY_CLIMB : VR_BODY_ARMS;
+    // On a vine, rope, tree, ladder or ledge (the game's climbing states, or hanging still off
+    // the ground), and during the game's own scripted moves: first person stays, the hands
+    // follow the controllers but don't drive the body (a grip climbs where there is a climb).
+    vr_scripted = vr_state_scripted(player->control_state);
+    vr_body_mode = (vr_scripted || vr_state_climb(player->control_state) || vr_hang_frames >= 6) ? VR_BODY_CLIMB : VR_BODY_ARMS;
     return 1;
 }
 
@@ -914,6 +944,74 @@ static void vr_hand_barrels(Actor *player) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Picking things up and throwing them with the hands. Barrels, TNT barrels, boulders, vases, steel
+// kegs and apples are carried the game's way (B next to one picks it up, B while carrying throws
+// it), so: a grip closing on one turns the Kong to it and presses B; while carrying, a grip
+// opening on a swing turns the Kong the way the hand went and presses B.
+
+static u32 vr_extra_press;         // N64 buttons pressed for the hands this frame (to the host)
+static s32 vr_extra_frames;
+static f32 vr_prev_grip[2];
+
+static s32 vr_is_throwable(s32 type) {
+    return type == ACTOR_BARREL || type == ACTOR_TNT_BARREL || type == ACTOR_BOULDER || type == ACTOR_STEEL_KEG
+        || type == ACTOR_APPLE || (type >= ACTOR_VASE_OVAL && type <= ACTOR_VASE_PLUS);
+}
+
+static void vr_press(u32 buttons, s32 frames) {
+    vr_extra_press = buttons;
+    vr_extra_frames = frames;
+}
+
+static void vr_hand_carry(Actor *player) {
+    s32 h, i, n = actor_count;
+    if (vr_extra_frames > 0 && --vr_extra_frames == 0) {
+        vr_extra_press = 0;
+    }
+    if (n > 256) {
+        n = 256;
+    }
+    for (h = 0; h < 2; h++) {
+        f32 g = vr_hands.grip[h];
+        s32 closed = g > 0.6f && vr_prev_grip[h] <= 0.6f;
+        s32 opened = g <= 0.4f && vr_prev_grip[h] > 0.4f;
+        vr_prev_grip[h] = g;
+        if (vr_extra_frames > 0) {
+            continue;
+        }
+        if (closed && !vr_state_carrying(player->control_state)) {
+            for (i = 0; i < n; i++) {
+                Actor *a = actor_list[i];
+                f32 dx, dz, dy;
+                if (a == NULL || a == player || (u32)a == 0xFFFFFFFF || !vr_is_throwable(a->unk58)) {
+                    continue;
+                }
+                dx = vr_loco.hand[h].pos.x - a->x_position;
+                dz = vr_loco.hand[h].pos.z - a->z_position;
+                dy = vr_loco.hand[h].pos.y - a->y_position;
+                if (dx * dx + dz * dz < 18.0f * 18.0f && dy > -6.0f && dy < 36.0f) {
+                    player->y_rotation = vr_heading_to_game(vr_atan2(a->x_position - player->x_position, a->z_position - player->z_position));
+                    vr_press(GST_N64_B, 3);
+                    recomp_printf("[vr-loco] hand %d picks up actor type %d\n", h, a->unk58);
+                    break;
+                }
+            }
+        } else if (opened && vr_state_carrying(player->control_state) && player->control_state != 71) {
+            gtl_vec3 v = vr_play_to_world(vr_hands.hand_vel[h], vr_ws);
+            f32 speed = vr_sqrt(vr_hands.hand_vel[h][0] * vr_hands.hand_vel[h][0] + vr_hands.hand_vel[h][1] * vr_hands.hand_vel[h][1]
+                + vr_hands.hand_vel[h][2] * vr_hands.hand_vel[h][2]);
+            if (speed > 1.2f) {
+                if (v.x * v.x + v.z * v.z > 0.01f) {
+                    player->y_rotation = vr_heading_to_game(vr_atan2(v.x, v.z));
+                }
+                vr_press(GST_N64_B, 3);
+                recomp_printf("[vr-loco] hand %d throws (%.1f m/s)\n", h, speed);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Cutscenes through the Kong's eyes (immersive cutscenes only). A right stick click switches any
 // cutscene between the game's camera and first person; the shops' (Cranky, Funky, Candy, Snide)
 // start in first person with `cutscene_pov` on. The view faces the way the Kong faced when it
@@ -1106,10 +1204,7 @@ void vr_gorilla_pre_frame(void) {
     // The game holds the Kong off the ground itself: a tree, rope, vine (states 87 / 88), ladder or
     // ledge. Anything off the ground that isn't a jump or a fall counts (the newer decomp's state
     // names don't match the real numbers, so there's no list of climbing states to go by).
-    if (vr_body_mode == VR_BODY_CLIMB
-        || (!(VR_ACTOR_CONTACT(player) & 1) && !vr_in_water && !vr_flying && !vr_loco.hand[0].touching
-            && !vr_loco.hand[1].touching && player->control_state != VR_STATE_NORMAL
-            && player->control_state != VR_STATE_AIR && player->control_state != 23 && player->control_state != 31)) {
+    if (vr_body_mode == VR_BODY_CLIMB && !vr_scripted) {
         vr_climb_seen = 90;                    // three seconds to start gripping after it lets go
         vr_climb_x = player->x_position;
         vr_climb_z = player->z_position;
@@ -1118,7 +1213,7 @@ void vr_gorilla_pre_frame(void) {
     }
     {
         f32 dx = player->x_position - vr_climb_x, dz = player->z_position - vr_climb_z;
-        s32 near = (vr_climb_seen > 0 || vr_grip_climbing) && (dx * dx + dz * dz < 40.0f * 40.0f);
+        s32 near = !vr_scripted && (vr_climb_seen > 0 || vr_grip_climbing) && (dx * dx + dz * dz < 40.0f * 40.0f);
         s32 g0 = vr_hands.grip[0] > 0.6f, g1 = vr_hands.grip[1] > 0.6f;
         if (near && (g0 || g1) && !vr_gun_drawn(player)) {
             if (!vr_grip_climbing) {
@@ -1199,6 +1294,7 @@ void vr_gorilla_pre_frame(void) {
         vr_fly_expect = vr_loco.body;
     }
     vr_hand_barrels(player);
+    vr_hand_carry(player);
     vr_gorilla_gestures(player, &in, dt);
     vr_tag_anywhere(player);
     if (!(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching && !vr_in_water) {
@@ -1299,7 +1395,7 @@ void vr_gorilla_post_frame(void) {
     vr_body.launch_count = vr_launch_count;
     {
         s32 assist = vr_active || vr_body_mode == VR_BODY_BARREL;
-        vr_body.press = assist ? vr_gst_out.hold : 0;
+        vr_body.press = assist ? (vr_gst_out.hold | vr_extra_press) : 0;
         vr_body.stick_valid = assist ? vr_gst_out.stick_valid : 0;
     }
     vr_body.stick_free = vr_active && (vr_air_frames > 24 || vr_body_mode == VR_BODY_CLIMB);
