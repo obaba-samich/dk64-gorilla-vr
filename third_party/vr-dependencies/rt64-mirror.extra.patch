@@ -16,14 +16,23 @@
          // game's output under it.
 --- a/src/hle/rt64_present_queue.cpp
 +++ b/src/hle/rt64_present_queue.cpp
-@@ -364,6 +364,30 @@
+@@ -364,6 +364,39 @@
                      lockedWorkloadMutex = false;
                  }
  
 +                // The desktop window shows the host's mirror of the headset view, once per present.
++                static int mirrorLogged = 0;
++                if ((i == 0) && vrHost->mirrorWanted() && !swapChainValid && !(mirrorLogged & 1)) {
++                    mirrorLogged |= 1;
++                    fprintf(stderr, "[vr] mirror: the window's swap chain isn't valid (minimised or zero size?)\n");
++                }
 +                if ((i == 0) && swapChainValid && vrHost->mirrorWanted()) {
 +                    uint32_t mirrorIndex = 0;
 +                    swapChainValid = ext.swapChain->acquireTexture(acquiredSemaphore.get(), &mirrorIndex);
++                    if (!swapChainValid && !(mirrorLogged & 2)) {
++                        mirrorLogged |= 2;
++                        fprintf(stderr, "[vr] mirror: couldn't get an image from the window's swap chain\n");
++                    }
 +                    if (swapChainValid) {
 +                        RenderTexture *mirrorTarget = ext.swapChain->getTexture(mirrorIndex);
 +                        RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();

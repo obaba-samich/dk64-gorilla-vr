@@ -970,6 +970,10 @@ public:
         if (!mirrorTexture || !mirrorFresh || (width == 0) || (height == 0)) {
             return false;
         }
+        if (!mirrorShownLogged) {
+            mirrorShownLogged = true;
+            dk64vr_logf("mirror: drawing into the window (%ux%u)", width, height);
+        }
         const plume::RenderTextureBarrier toBlit[] = {
             plume::RenderTextureBarrier(mirrorTexture.get(), plume::RenderTextureLayout::COPY_SOURCE),
             plume::RenderTextureBarrier(target, plume::RenderTextureLayout::COPY_DEST)
@@ -4009,6 +4013,7 @@ private:
     std::unique_ptr<plume::RenderTexture> mirrorTexture;
     uint32_t mirrorWidth = 0, mirrorHeight = 0;
     bool mirrorFresh = false;
+    bool mirrorShownLogged = false;
     std::mutex camBodyMutex;              // the body pair of the newest workload (camera blend)
     dk64vr_body camBodyPrev = {}, camBodyLast = {};
     bool camBodyValid = false;
