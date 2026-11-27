@@ -411,6 +411,9 @@ static s32 vr_air_frames;          // frames off the ground with no hand on anyt
 static f32 vr_last_head[3];        // last frame's tracked head, to spot recentres
 static s32 vr_surface_swim;        // swimming at the surface: paddle flat
 static f32 vr_water_lift;          // eyes raised over the water while swimming at the surface
+static s32 vr_climb_seen;          // frames since the game last held the Kong on something
+static f32 vr_climb_x, vr_climb_z; // where that was
+static s32 vr_grip_climbing;       // a grip holds on there
 
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
@@ -523,6 +526,7 @@ static void vr_build_input(gtl_input *in, f32 dt) {
         in->hand[h].y = in->head.y + r.y;
         in->hand[h].z = in->head.z + r.z;
         in->hand_enabled[h] = 1;
+        in->hand_hold[h] = 0;
     }
     in->dt = dt;
     in->external_flight = 1;
@@ -1089,11 +1093,44 @@ void vr_gorilla_pre_frame(void) {
         }
     }
 
+    // Grip climbing (Gorilla Tag style): on a tree, ladder, vine or ledge the game holds the
+    // Kong; a closed grip there holds that hand where it is and pulls move the body directly
+    // (through the movement patch, like any held hand). Open hands leave it to the game's own
+    // climbing (the stick and the overhead-pull gesture), and letting go mid-pull throws.
     if (vr_body_mode == VR_BODY_CLIMB) {
-        // on a tree, ladder or vine the game holds the player; the hands only climb (stick)
-        in.hand_enabled[0] = in.hand_enabled[1] = 0;
-        in.mode = GTL_MODE_FROZEN;
-        vr_fly_end("climbing");
+        vr_climb_seen = 90;                    // three seconds to start gripping after it lets go
+        vr_climb_x = player->x_position;
+        vr_climb_z = player->z_position;
+    } else if (vr_climb_seen > 0) {
+        vr_climb_seen--;
+    }
+    {
+        f32 dx = player->x_position - vr_climb_x, dz = player->z_position - vr_climb_z;
+        s32 near = (vr_climb_seen > 0 || vr_grip_climbing) && (dx * dx + dz * dz < 40.0f * 40.0f);
+        s32 g0 = vr_hands.grip[0] > 0.6f, g1 = vr_hands.grip[1] > 0.6f;
+        if (near && (g0 || g1) && !vr_gun_drawn(player)) {
+            if (!vr_grip_climbing) {
+                recomp_printf("[vr-loco] grip climbing\n");
+            }
+            vr_grip_climbing = 1;
+            in.hand_hold[0] = g0;
+            in.hand_hold[1] = g1;
+            in.mode = GTL_MODE_AIR_GROUND;
+            in.hand_enabled[0] = in.hand_enabled[1] = 1;
+            vr_body_mode = VR_BODY_ARMS;       // the hands drive now, not the game's climb
+            vr_fly_end("climbing");
+        } else {
+            if (vr_grip_climbing) {
+                recomp_printf("[vr-loco] grip climbing over\n");
+            }
+            vr_grip_climbing = 0;
+            if (vr_body_mode == VR_BODY_CLIMB) {
+                // the game's own climbing: the hands only steer it (stick)
+                in.hand_enabled[0] = in.hand_enabled[1] = 0;
+                in.mode = GTL_MODE_FROZEN;
+                vr_fly_end("climbing");
+            }
+        }
     }
     if (vr_in_water) {
         vr_fly_end("water");
