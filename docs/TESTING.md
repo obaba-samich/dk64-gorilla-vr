@@ -124,3 +124,9 @@ with each build. Results go here, per level:
 | Creepy Castle | ⬜ | ⬜ | King Kut Out, minecart, car race | |
 | Hideout Helm | ⬜ | ⬜ | Helm barrels | |
 | K. Rool | ⬜ | ⬜ | five phases | |
+
+## Climb and swim checks (headless)
+- `diag_climb = 180` (after `diag_gorilla`): each map, the Kong is put by the nearest climbable and
+  climbs hand over hand with the grips. Look for `diag climb: y ... holding 1` going up.
+- `diag_swim = 150` (after `diag_gorilla`): finds deep water near the start, drops in and
+  breaststrokes. Look for `swimming: ... speed` lines. Gloomy Galleon (`diag_warp_first = 6`) works.

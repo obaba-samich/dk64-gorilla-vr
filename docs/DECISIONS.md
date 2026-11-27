@@ -394,3 +394,17 @@ Ninth headset test:
 - Stick flicks: past ~55% in any direction, the closer of the four wins (was 70% on one axis).
 - With D43's swap fixes, two stress runs (40 warps, 14 forced swaps) had no crash; before them
   3 of 4 crashed.
+
+### D45. Grips hold any climbable, strokes swim, vines fling, transitions stay live
+Tenth headset test: trees still didn't hold, hands didn't swim, transitions were hidden.
+- Trees: the grip only held trunks the game had latched onto once. DK64 keeps a list of
+  climbables per map (D_global_asm_807FDCC0: trees, poles, ladders as segments between two bones);
+  a grip closing within that climbable's latch range now holds (like Grate's climb mod).
+- Swimming: paddling was quadratic only, so normal strokes did little. It is linear plus quadratic
+  now (per metre, any Kong size), leaning 20% towards the look (as MonkeSwim does).
+- Vines: the game swings you while a grip holds; opening both flings (A).
+- When the game moves the player without its movement step (surface swimming, some air states)
+  the hands' move is applied after the frame.
+- Transitions draw live while the game still renders 3D (`live_transitions`).
+- Headless checks: `diag_climb` (+300 units up a DK Isles tree), `diag_swim` (about 60 units/s in
+  Galleon).
