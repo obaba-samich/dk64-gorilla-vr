@@ -347,3 +347,19 @@ latency (the hands are drawn at the game's 30 Hz), grip climbing, hand pickups.
   (gridSetNodeBounds = func_global_asm_806F4D70 sets the player's and clears the extras;
   gridAppendPositionNode = 806F4DC0 adds one). The patched setup adds one at each hand.
 - A crash handler writes the call stack and load address to the log (addr2line on the offsets).
+
+### D42. Start at once, the left stick only turns, shops, grips on anything the game holds
+Seventh headset test:
+- Start needed two presses in menus. The menu button waited up to 0.15 s for the left stick
+  click to join (the VR settings chord) before sending Start. Now Start goes out at once (at
+  least 0.12 s); the chord is the stick click first, or both together.
+- The left stick did "actions": in arm mode its up / down sent C-up / C-down, and C-up is the
+  game's first-person look. It only turns now. (C-up / C-down have no binding in arm mode.)
+- Shop menus didn't work: in the shops arm mode held both sticks. The shops now leave the body
+  to the game (the third-person mode), so the sticks pick moves and items.
+- Grips didn't take over on trees or ropes: climbing was only noticed when the Kong hung still.
+  Now it's any state off the ground other than a jump (23) or a fall (30 / 31): trees, ropes,
+  vines (87 / 88), ladders, ledges.
+- The mirror froze in menus: those come through RT64's flat panel, not the eyes. RT64 hands the
+  host the panel right after drawing it, and the window shows it while it's on screen. Dialog
+  and HUD drawn over the 3D view aren't in the mirror (they're a separate headset layer).
