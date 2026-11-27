@@ -675,10 +675,19 @@ static s32 vr_tag_map_allowed(void) {
     }
 }
 
+static s32 vr_warp_seen;            // (defined with the Testing tab below)
+static s32 vr_tag_settled;          // frames of play in this map (a swap loads the new Kong's model)
+static s32 vr_tag_settled_map = -1;
+
 static s32 vr_tag_allowed(Actor *p) {
     void *ps = VR_ACTOR_CUSTOM(p);
     f32 scale = p->animation_state != NULL ? p->animation_state->scale_y : 0.15f;
     if (is_cutscene_active || vr_body_mode != VR_BODY_ARMS || vr_in_water) {
+        return 0;
+    }
+    // not while a map is still coming in or a warp is on its way: swapping loads the new Kong's
+    // model and animations, and a stress test swapping regardless crashed in that load
+    if (vr_tag_settled < 60 || vr_hands.warp_req != vr_warp_seen) {
         return 0;
     }
     if (current_character_index[0] > 4) {
@@ -722,6 +731,13 @@ static void vr_tag_to(Actor *p, s32 next) {
         }
     }
     func_global_asm_806C8E58((s16)(next + 2));
+    // The swap can give the player a new actor: everything after it goes to the current one. (Writing
+    // through the old pointer corrupted the game's memory and crashed it later, in the actor lists
+    // and the heap; the Randomizer reads its Player pointer afresh after tagKong too.)
+    p = (character_change_array != NULL) ? character_change_array[0].playerPointer : NULL;
+    if (p == NULL) {
+        return;
+    }
     func_global_asm_806CFF9C(p);
     if (p->unkB8 > 140.0f) {
         p->unkB8 = 140.0f;
@@ -732,6 +748,12 @@ static void vr_tag_to(Actor *p, s32 next) {
 }
 
 static void vr_tag_anywhere(Actor *p) {
+    if (current_map != vr_tag_settled_map) {
+        vr_tag_settled_map = current_map;
+        vr_tag_settled = 0;
+    } else if (vr_tag_settled < 1000) {
+        vr_tag_settled++;
+    }
     f32 x = vr_hands.stick[1][0];   // right stick left / right, with the other stick actions
     s32 dir = 0, k, i, next;
     if (vr_tag_cooldown > 0) {
@@ -1297,6 +1319,11 @@ void vr_gorilla_pre_frame(void) {
     vr_hand_carry(player);
     vr_gorilla_gestures(player, &in, dt);
     vr_tag_anywhere(player);
+    // a Kong swap can replace the player actor
+    player = character_change_array[0].playerPointer;
+    if (player == NULL) {
+        return;
+    }
     if (!(VR_ACTOR_CONTACT(player) & 1) && !vr_loco.hand[0].touching && !vr_loco.hand[1].touching && !vr_in_water) {
         vr_air_frames++;
     } else {
