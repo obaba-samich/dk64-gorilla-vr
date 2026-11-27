@@ -546,6 +546,8 @@ static void vr_setup_params(Actor *player) {
     vr_params.jump_multiplier = vr_hands.jump_multiplier * kb->launch;
     vr_params.max_jump_speed = vr_hands.max_jump_speed * vr_ws;
     vr_params.min_launch_speed = 0.4f * vr_ws;
+    vr_params.paddle_strength = 0.08f * 26.0f / vr_ws;   // quadratic: per metre, whatever the scale
+    vr_params.paddle_deadzone = 0.1f * vr_ws;
     vr_params.unstick_distance = 1.0f * vr_ws;
     vr_params.history_frames = 3;
     vr_params.gravity = 0.0f;  // the game's own
@@ -557,6 +559,10 @@ static void vr_build_input(gtl_input *in, f32 dt) {
     f32 k = vr_ws * vr_hands.arm_scale;
     s32 h;
     in->head = vr_play_to_world(vr_hands.head, vr_ws);
+    // where the head faces, flat (the same heading the Kong is turned to)
+    in->look.x = vr_sin(vr_yaw + vr_hands.head_yaw);
+    in->look.y = 0.0f;
+    in->look.z = vr_cos(vr_yaw + vr_hands.head_yaw);
     for (h = 0; h < 2; h++) {
         // the hand's offset from the head gets the arm scale, the head itself does not
         f32 rel[3];

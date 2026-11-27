@@ -67,6 +67,10 @@ typedef struct gtl_params {
     /* Water */
     float paddle_strength;     /* water push per (hand speed)^2; quadratic so slow recovery
                                   strokes cost less than fast power strokes */
+    float paddle_linear;       /* plus a push per (hand speed), 1/s: gentle strokes move you too */
+    float paddle_look;         /* each stroke also pushes this much (fraction) towards where you
+                                  look, so swimming heads where you face (MonkeSwim does this) */
+    float paddle_deadzone;     /* hand speeds below this (units/s) don't paddle (tracking noise) */
     float water_drag;          /* 1/s */
     float buoyancy;            /* units/s^2 upwards while in water, offsets gravity */
 
@@ -87,6 +91,7 @@ typedef struct gtl_input {
     int hand_enabled[2];       /* 0 while a hand is busy (holding a gun, an instrument...) */
     int hand_hold[2];          /* the grip holds this hand where it is, surface or not (a tree, a
                                   ladder, a vine the caller says is in reach); pulls move the body */
+    gtl_vec3 look;             /* where the head faces, unit length (zero: no look assist) */
     int mode;
     int external_flight;       /* the game owns gravity and free flight: when no hand holds,
                                   only room-scale moves the body and a release just reports

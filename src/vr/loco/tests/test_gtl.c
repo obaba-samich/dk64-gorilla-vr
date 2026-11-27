@@ -433,6 +433,21 @@ static void test_water_paddle(void) {
     CHECK(fabsf(r.s.body.y - 50.0f) < 2.0f, "neutral buoyancy, y %f", r.s.body.y);
 }
 
+static void test_water_look_assist(void) {
+    /* even strokes back and forth (no fast power stroke) still swim where you look */
+    rig r;
+    int i;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    r.in.look = V(0, 0, 1);
+    rig_start(&r, V(0, 50, 0));
+    for (i = 0; i < 6; i++) {
+        rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
+        rig_step(&r, 16, V(0, 0, 0.5f), V(0, 0, 0.5f), Z3);
+    }
+    CHECK(r.s.body.z > 3.0f, "strokes should head where we look, z %f", r.s.body.z);
+}
+
 static void test_water_still_is_still(void) {
     rig r;
     rig_init(&r, HANDS_OUT);
@@ -573,6 +588,7 @@ int main(void) {
         { "arm length clamp", test_arm_length_clamp },
         { "disabled hand does not grip", test_disabled_hand_does_not_grip },
         { "water paddle", test_water_paddle },
+        { "water look assist", test_water_look_assist },
         { "still water is still", test_water_still_is_still },
         { "frozen mode", test_frozen_mode },
         { "reset teleports", test_reset_teleports },

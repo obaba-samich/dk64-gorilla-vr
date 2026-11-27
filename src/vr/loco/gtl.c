@@ -52,6 +52,9 @@ void gtl_default_params(gtl_params *p) {
     p->slip_threshold = 0.95f;
 
     p->paddle_strength = 0.08f;
+    p->paddle_linear = 2.0f;
+    p->paddle_look = 0.2f;
+    p->paddle_deadzone = 3.0f;
     p->water_drag = 1.5f;
     p->buoyancy = 150.0f;
 
@@ -365,7 +368,19 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
                 gtl_vec3 rel = vsub(in->hand[h], in->head);
                 gtl_vec3 hv = vmul(vsub(rel, s->hand[h].last_rel), 1.0f / dt);
                 float sp = vlen(w, hv);
-                s->velocity = vsub(s->velocity, vmul(hv, p->paddle_strength * sp * dt));
+                gtl_vec3 dir;
+                float dl;
+                if (sp <= p->paddle_deadzone) {
+                    continue;
+                }
+                /* push against the stroke, leaning a little towards the look */
+                dir = vadd(vmul(hv, -1.0f / sp), vmul(in->look, p->paddle_look));
+                dl = vlen(w, dir);
+                if (dl < GTL_EPS) {
+                    continue;
+                }
+                dir = vmul(dir, 1.0f / dl);
+                s->velocity = vadd(s->velocity, vmul(dir, (p->paddle_linear * sp + p->paddle_strength * sp * sp) * dt));
             }
         }
         s->velocity = vclamp_len(w, s->velocity, p->max_jump_speed);
