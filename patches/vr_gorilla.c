@@ -410,6 +410,7 @@ static s32 vr_hang_frames;         // frames off the ground with no vertical spe
 static s32 vr_air_frames;          // frames off the ground with no hand on anything
 static f32 vr_last_head[3];        // last frame's tracked head, to spot recentres
 static s32 vr_surface_swim;        // swimming at the surface: paddle flat
+static f32 vr_water_lift;          // eyes raised over the water while swimming at the surface
 
 static s32 vr_should_drive(Actor *player) {
     s32 scene = vr_current_scene();
@@ -1057,8 +1058,20 @@ void vr_gorilla_pre_frame(void) {
     {
         f32 floor_y, water_y = 0.0f;
         f32 head_y = vr_loco.body.y + vr_params.head_height;
-        vr_floor_at(player, vr_loco.body.x, vr_loco.body.z, head_y + 2000.0f, &floor_y);
+        // the floor under the body (the water level comes with it); starting far overhead
+        // found roofs indoors, which have no water, so swimming was never noticed
+        vr_floor_at(player, vr_loco.body.x, vr_loco.body.z, head_y + 10.0f, &floor_y);
         s32 has_water = func_global_asm_8066715C(&water_y);
+        // Swimming at the surface the game holds the Kong's feet about 35 units under the water,
+        // so its eyes (21 up) would be under it: lift the eyes and the hands to just above the
+        // water then. Deeper than that is diving, at the normal height.
+        vr_water_lift = 0.0f;
+        if (has_water && (water_y - player->y_position) > 0.0f && (water_y - player->y_position) < 45.0f
+            && head_y < water_y + 3.0f) {
+            vr_water_lift = water_y + 3.0f - head_y;
+            vr_params.head_height += vr_water_lift;
+            head_y += vr_water_lift;
+        }
         // swimming at the surface keeps the head just above the water, so count a body that's
         // in it up to the eyes too, and only paddle along the surface then
         vr_surface_swim = has_water && head_y >= water_y && vr_loco.body.y < water_y;
@@ -1219,7 +1232,7 @@ void vr_gorilla_post_frame(void) {
         {
             gtl_vec3 off = vr_play_to_world(vr_hands.head, vr_ws);
             vr_body.head[0] = player->x_position - off.x;
-            vr_body.head[1] = player->y_position + vr_height;   // the head's height stays inside the body: the host adds it live
+            vr_body.head[1] = player->y_position + vr_height + vr_water_lift;   // the head's height stays inside the body: the host adds it live
             vr_body.head[2] = player->z_position - off.z;
         }
         vr_body.yaw = vr_yaw;
