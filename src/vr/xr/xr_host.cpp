@@ -2704,6 +2704,26 @@ private:
                 diagClimb = true;
             }
         }
+        if ((setting("diag_swim") > 0.0) && stereoLatched && (diagGorillaStartS != 0.0) && !diagClimb) {
+            const double t = displayS - diagGorillaStartS - setting("diag_gorilla");
+            if ((t >= 0.0) && (t < setting("diag_swim"))) {
+                // breaststroke: a quick pull back past the hips, a slow reach forward, 1.2 s each
+                const float ph = float(std::fmod(t, 1.2) / 1.2);
+                float z;
+                if (ph < 0.3f) {
+                    z = -0.5f + 0.6f * (ph / 0.3f);
+                } else {
+                    z = 0.1f - 0.6f * ((ph - 0.3f) / 0.7f);
+                }
+                for (int i = 0; i < 2; i++) {
+                    h.hand[i][0] = h.head[0] + (i == 0 ? -0.3f : 0.3f);
+                    h.hand[i][1] = h.head[1] - 0.35f;
+                    h.hand[i][2] = h.head[2] + z;
+                }
+                h.valid = 1;
+                h.diag_climb = 2;   // the game side: find water and drop in
+            }
+        }
         bool diagGestures = false;
         if ((setting("diag_gestures") > 0.0) && stereoLatched) {
             const double rowFor = setting("diag_gorilla");

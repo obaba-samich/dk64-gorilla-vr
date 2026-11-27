@@ -448,6 +448,7 @@ static s32 vr_tree_count;
 static s32 vr_trees_map = -1;
 static s32 vr_climb_list_logged;
 static s32 vr_diag_climb_placed;
+static s32 vr_diag_swim_scan;         // diag_swim: next spot to look for water at (-1: done)
 static f32 vr_climb_diag_y;
 
 // The game's own list of climbables (trees, poles, ladders) in the map: each is a run of segments
@@ -1345,8 +1346,9 @@ void vr_gorilla_pre_frame(void) {
             vr_climb_list_logged = 1;
             recomp_printf("[vr-loco] climbables in map %d: %d (nearest %.0f units, reach %.0f)\n", current_map, n, d, reach);
             vr_diag_climb_placed = 0;
+            vr_diag_swim_scan = 0;
         }
-        if (vr_hands.diag_climb && !vr_diag_climb_placed && vr_climb_list_logged && vr_tag_settled > 30) {
+        if (vr_hands.diag_climb == 1 && !vr_diag_climb_placed && vr_climb_list_logged && vr_tag_settled > 30) {
             // diagnostics: stand right in front of the nearest climbable, facing it
             f32 at[3], reach = 0.0f;
             s32 n = 0;
@@ -1362,7 +1364,7 @@ void vr_gorilla_pre_frame(void) {
                 recomp_printf("[vr-loco] diag climb: placed by a climbable (was %.0f away) at y %.0f\n", d, player->y_position);
             }
         }
-        if (vr_hands.diag_climb && vr_diag_climb_placed && (vr_frame % 30) == 0) {
+        if (vr_hands.diag_climb == 1 && vr_diag_climb_placed && (vr_frame % 30) == 0) {
             recomp_printf("[vr-loco] diag climb: y %.0f (%+.0f), state %d, holding %d\n", player->y_position,
                 player->y_position - vr_climb_diag_y, st, vr_grip_climbing);
         }
@@ -1476,8 +1478,36 @@ void vr_gorilla_pre_frame(void) {
             }
         }
     }
+    if (vr_hands.diag_climb == 2 && !vr_in_water && vr_diag_swim_scan >= 0 && vr_tag_settled > 30) {
+        // diagnostics (diag_swim): look around for deep water, a few spots a frame, and drop in
+        s32 i;
+        for (i = 0; i < 8 && vr_diag_swim_scan >= 0; i++, vr_diag_swim_scan++) {
+            s32 ring = 1 + vr_diag_swim_scan / 16, k = vr_diag_swim_scan % 16;
+            f32 a = (f32)k * (VR_TWO_PI / 16.0f), r = (f32)ring * 60.0f;
+            f32 x = player->x_position + vr_sin(a) * r, z = player->z_position + vr_cos(a) * r;
+            f32 fy = -1e6f, wy = 0.0f;
+            vr_floor_at(player, x, z, player->y_position + 300.0f, &fy);
+            if (func_global_asm_8066715C(&wy) && wy > fy + 80.0f) {
+                player->x_position = x;
+                player->z_position = z;
+                player->y_position = wy - 30.0f;
+                vr_initialised = 0;
+                recomp_printf("[vr-loco] diag swim: dropped into water %.0f deep at %.0f %.0f\n", wy - fy, x, z);
+                vr_diag_swim_scan = -1;
+            } else if (ring > 40) {
+                recomp_printf("[vr-loco] diag swim: no deep water within %.0f units\n", r);
+                vr_diag_swim_scan = -1;
+            }
+        }
+    }
     if (vr_in_water) {
         vr_fly_end("water");
+        if ((vr_frame % 30) == 0) {
+            recomp_printf("[vr-loco] swimming: at %.0f %.0f %.0f, speed %.1f m/s (state %d)\n", player->x_position,
+                player->y_position, player->z_position,
+                vr_sqrt(vr_loco.velocity.x * vr_loco.velocity.x + vr_loco.velocity.z * vr_loco.velocity.z) / vr_ws,
+                player->control_state);
+        }
     }
     if (vr_flying) {
         // the core flies the body: its own gravity, sliding and sweeps against the floors
