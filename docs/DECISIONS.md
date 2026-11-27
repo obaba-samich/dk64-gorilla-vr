@@ -363,3 +363,22 @@ Seventh headset test:
 - The mirror froze in menus: those come through RT64's flat panel, not the eyes. RT64 hands the
   host the panel right after drawing it, and the window shows it while it's on screen. Dialog
   and HUD drawn over the 3D view aren't in the mirror (they're a separate headset layer).
+
+### D43. The game's own player states decide; Tag Anywhere's swap fixed
+Eighth headset test: still no trees or vines, transition animations broken, no barrel pickup.
+- Trees and vines: the game put the Kong on the tree (state 13) and the next frame the hands,
+  still on the ground, threw it straight off. Climbing states (13, 66, 87, 88, 93, 94, 99) now
+  keep the arms out of it; a closed grip climbs.
+- Transitions: the arms kept driving the body through the game's scripted moves. A list of
+  scripted states (barrel entries and exits, scene walk-ins, tag pads, knockbacks, blasts, death,
+  exits, cutscene holds, dialogue) keeps them out. The state numbers line up with the newer
+  decomp's player state table for every state seen in logs (78 / 79 swimming, 87 / 88 vine,
+  103 cutscene idle, 66 frozen hang, 71-77 carrying), though its names had seemed off earlier.
+- Carrying: a grip closing on a barrel, TNT barrel, boulder, vase, keg or apple presses B (pick
+  up); opening it on a swing while carrying presses B (throw) facing the swing.
+- The rare crash: every crashing run had the forced Kong swaps of the Tag Anywhere test on; 2
+  runs (40 warps) without them never crashed. Our swap kept writing through the old player pointer
+  after tagKong; it reads the player afresh now (as the Randomizer does), and swaps wait for a
+  settled map and no pending warp. With the pointer fix alone one of two stress runs still crashed
+  (inside the swap's model load), so the settle rule is the guard; more runs pending.
+Tests now run headless (the mirror off in the simulator's settings, so no window).
