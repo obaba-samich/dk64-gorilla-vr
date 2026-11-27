@@ -331,3 +331,19 @@ jittered, swimming didn't work.
 - The mirror logs when it first draws into the window, or why it can't (simulator: it draws).
 Open: an intermittent crash (one simulator run in five, no debugger here to see where), arm
 latency (the hands are drawn at the game's 30 Hz), grip climbing, hand pickups.
+
+### D41. Smooth hands, grip climbing, hand pickups, a crash report
+"Everything":
+- Arm lag: the arm and hand boxes carry interpolation tags (one per box slot), so RT64 blends
+  them at the headset's rate instead of 30 Hz steps; a free hand is drawn 45 ms ahead along its
+  motion. Drawing them from the live controller pose would need RT64 to move one object at display
+  rate, which it can't yet.
+- Grip climbing: the core takes `hand_hold` (a grip holds a hand where it is, no surface needed).
+  When the game holds the Kong on something climbable (our hang detection: off the ground, not
+  falling, no hand held) or did within three seconds and 40 units, a closed grip holds and the
+  body follows the pulls through the movement patch. Open hands leave the game's own climbing.
+  The newer decomp's state names are off from the real numbers, so climbing isn't found by state.
+- Pickups: the game collects grid items within spheres around the player
+  (gridSetNodeBounds = func_global_asm_806F4D70 sets the player's and clears the extras;
+  gridAppendPositionNode = 806F4DC0 adds one). The patched setup adds one at each hand.
+- A crash handler writes the call stack and load address to the log (addr2line on the offsets).
