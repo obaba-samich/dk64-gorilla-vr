@@ -215,8 +215,12 @@ SystemChord::Out SystemChord::update(bool menu, bool view, double nowS, const Ch
                 o.view = true;
             }
             else if (menuPressed) {
-                mode = MenuWait;
-                menuDownS = nowS;
+                // Start at once (waiting to see whether View joins made a tap need two presses
+                // in the game's menus); at least startPulse long so a quick tap is seen. The VR
+                // settings chord is View first, or both together.
+                mode = MenuPass;
+                pulseUntilS = nowS + config.startPulse;
+                o.menu = true;
                 o.view = view;
             }
             else {
@@ -367,7 +371,9 @@ InputResult InputMapper::update(const InputSample &raw, const InputConfig &confi
     b |= s.y ? n64::CLeft : 0;
     b |= s.b ? n64::CRight : 0;
     if (context.gesturesOwnGrips) {
-        const float ry = clamp1(context.stickActionsOnRight ? s.lStick[1] : s.rStick[1]);
+        // with the right stick doing abilities the left stick only turns: its up / down would be
+        // C-up (the game's first-person look) by accident
+        const float ry = context.stickActionsOnRight ? 0.0f : clamp1(s.rStick[1]);
         b |= (ry > 0.6f) ? n64::CUp : 0;
         b |= (ry < -0.6f) ? n64::CDown : 0;
     }

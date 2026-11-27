@@ -1007,9 +1007,9 @@ static void testN64Map() {
     m.update(sampleIdle(), config, context, 0.9, 1.0f / 72.0f);
     InputResult r = m.update(s, config, context, 1.0, 1.0f / 72.0f);
     // DK64 Recompiled's defaults on an Xbox-layout pad (src/game/config.cpp set_control_defaults).
-    // Start follows Menu once the Menu + View chord can no longer form (0.15 s).
+    // Start follows Menu at once (the VR settings chord is View first, or both together).
     const uint16_t all = n64::A | n64::B | n64::CLeft | n64::CRight | n64::CDown | n64::CUp | n64::L | n64::DUp | n64::DLeft | n64::Z | n64::R;
-    CHECK(r.buttons == all);
+    CHECK(r.buttons == (all | n64::Start));
     r = m.update(s, config, context, 1.16, 1.0f / 72.0f);
     CHECK(r.buttons == (all | n64::Start));
     // Trigger hysteresis: 0.4 keeps Z held, 0.3 releases it, 0.45 does not re-press.
@@ -1026,7 +1026,7 @@ static void testN64Map() {
     // Right stick Y does nothing in VR (lesson 80).
     s = sampleIdle();
     s.rStick[1] = 1.0f;
-    r = m.update(s, config, context, 1.1, 1.0f / 72.0f);
+    r = m.update(s, config, context, 1.3, 1.0f / 72.0f);
     CHECK(r.buttons == 0 && r.turnDeg == 0.0f);
     // Focus lost: everything released.
     s = sampleIdle();
@@ -1066,8 +1066,8 @@ static void testStickRelativeToView() {
     CHECK_NEAR(y, 1.0, 1e-5);
 }
 
-// Arm locomotion's right-stick abilities: turning and C-up / C-down move to the left stick, which
-// moves nothing then, and the right stick sends nothing to the N64 pad.
+// Arm locomotion's right-stick abilities: turning moves to the left stick, which does nothing else
+// then, and the right stick sends nothing to the N64 pad.
 static void testStickActionsOnRight() {
     InputMapper m;
     InputConfig config;
@@ -1084,7 +1084,7 @@ static void testStickActionsOnRight() {
     s.lStick[0] = 0.0f;
     s.lStick[1] = 0.9f;
     r = m.update(s, config, context, t += 0.014, 0.014f);
-    CHECK((r.buttons & n64::CUp) != 0 && r.stickY == 0.0f);
+    CHECK(r.buttons == 0 && r.stickY == 0.0f);   // up / down does nothing (no C-up first person)
     s = sampleIdle();
     s.rStick[0] = 0.9f;
     r = m.update(s, config, context, t += 0.014, 0.014f);
@@ -2034,23 +2034,24 @@ struct ChordRun {
 
 static void testChord() {
     {
-        // Menu tapped: Start is held back during the grace, then pulsed for at least 0.1 s.
+        // Menu tapped: Start at once, for at least 0.12 s (a quick tap is still seen).
         ChordRun c;
         c.context.stereoPlay = true;
         c.frames(false, false, 0.1);
-        c.frames(true, false, 0.06);
-        CHECK(c.starts == 0);
+        const double down = c.t;
+        c.frames(true, false, 0.03);
+        CHECK(c.starts > 0 && c.firstStartS < down + 0.02);
         c.frames(false, false, 0.5);
-        CHECK(c.starts >= 7 && c.starts <= 10);  // 0.12 s at 72 Hz
+        CHECK(c.starts >= 7 && c.starts <= 11);  // 0.12 s at 72 Hz
         CHECK(c.fired == 0 && c.toggles == 0);
     }
     {
-        // Menu held: Start from 0.15 s on, for as long as it is held.
+        // Menu held: Start at once, for as long as it is held.
         ChordRun c;
         c.frames(false, false, 0.1);
         const double down = c.t;
         c.frames(true, false, 1.0);
-        CHECK(c.firstStartS >= down + 0.15 - 1e-9 && c.firstStartS < down + 0.17);
+        CHECK(c.firstStartS >= down - 1e-9 && c.firstStartS < down + 0.02);
         CHECK(c.starts >= 60);
         CHECK(c.fired == 0);
     }
@@ -2079,13 +2080,14 @@ static void testChord() {
         CHECK(c.starts == 0 && c.toggles == 0 && c.recentres == 0);
     }
     {
-        // Menu first, View 0.1 s later (inside the grace): the chord, no Start.
+        // Menu first, View 0.1 s later: Start went at once, so no chord (View first, or both
+        // together, opens the VR settings).
         ChordRun c;
         c.frames(false, false, 0.1);
         c.frames(true, false, 0.1);
         c.frames(true, true, 0.7);
         c.frames(false, false, 0.3);
-        CHECK(c.fired == 1 && c.starts == 0 && c.toggles == 0);
+        CHECK(c.fired == 0 && c.starts > 0);
     }
     {
         // Let go early: nothing at all, also from the button still held.
