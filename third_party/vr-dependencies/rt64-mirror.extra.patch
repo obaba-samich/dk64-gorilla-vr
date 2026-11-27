@@ -1,6 +1,6 @@
 --- a/src/hle/rt64_vr.h
 +++ b/src/hle/rt64_vr.h
-@@ -190,6 +190,13 @@
+@@ -190,6 +190,16 @@
          virtual RenderFramebuffer *panelAcquire(RenderTexture **texture, uint32_t *width, uint32_t *height) = 0;
          virtual void panelRelease() = 0;
  
@@ -9,6 +9,9 @@
 +        // any on return; RT64 then makes it PRESENT). False from mirrorRecord: nothing to show yet,
 +        // RT64 clears it.
 +        virtual bool mirrorWanted() { return false; }
++        // Present thread, right after the flat output was drawn into the panel image (COLOR_WRITE,
++        // to be left so): a chance to copy it for the mirror.
++        virtual void panelRecorded(RenderCommandList *commandList, RenderTexture *panel, uint32_t width, uint32_t height) {}
 +        virtual bool mirrorRecord(RenderCommandList *commandList, RenderTexture *target, uint32_t width, uint32_t height) { return false; }
 +
          // Present thread, after a successful panelAcquire: true draws only the UI hook into the
@@ -16,7 +19,15 @@
          // game's output under it.
 --- a/src/hle/rt64_present_queue.cpp
 +++ b/src/hle/rt64_present_queue.cpp
-@@ -364,6 +364,39 @@
+@@ -352,6 +352,7 @@
+                         drawHook(commandList, panelFramebuffer);
+                     }
+ 
++                    vrHost->panelRecorded(commandList, panelTexture, panelWidth, panelHeight);
+                     commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(panelTexture, RenderTextureLayout::COLOR_WRITE));
+                     commandList->end();
+                     ext.presentGraphicsWorker->execute();
+@@ -364,6 +365,39 @@
                      lockedWorkloadMutex = false;
                  }
  

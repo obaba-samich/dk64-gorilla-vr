@@ -964,14 +964,63 @@ public:
     }
 
     bool mirrorWanted() override {
-        return (setting("mirror_left_eye") != 0.0) && stereoLatched;
+        return (setting("mirror_left_eye") != 0.0) && sessionRunning;
+    }
+
+    // Present thread: the flat panel (menus, the pause screen, the title and file screens) as the
+    // headset shows it, copied for the mirror while it's on screen.
+    void panelRecorded(plume::RenderCommandList *commandList, plume::RenderTexture *panel, uint32_t width, uint32_t height) override {
+        if ((setting("mirror_left_eye") == 0.0) || (width == 0) || (height == 0)) {
+            return;
+        }
+        std::scoped_lock lock(mirrorMutex);
+        if (!mirrorPanelTexture || (mirrorPanelWidth != width) || (mirrorPanelHeight != height)) {
+            mirrorPanelTexture = device->createTexture(plume::RenderTextureDesc::ColorTarget(width, height, plume::RenderFormat::B8G8R8A8_UNORM));
+            mirrorPanelWidth = width;
+            mirrorPanelHeight = height;
+        }
+        const plume::RenderTextureBarrier toCopy[] = {
+            plume::RenderTextureBarrier(panel, plume::RenderTextureLayout::COPY_SOURCE),
+            plume::RenderTextureBarrier(mirrorPanelTexture.get(), plume::RenderTextureLayout::COPY_DEST)
+        };
+        commandList->barriers(plume::RenderBarrierStage::COPY, toCopy, 2);
+        const plume::RenderBox box(0, 0, int32_t(width), int32_t(height));
+        commandList->copyTextureRegion(plume::RenderTextureCopyLocation::Subresource(mirrorPanelTexture.get()), plume::RenderTextureCopyLocation::Subresource(panel), 0, 0, 0, &box);
+        commandList->barriers(plume::RenderBarrierStage::GRAPHICS, plume::RenderTextureBarrier(panel, plume::RenderTextureLayout::COLOR_WRITE));
+        mirrorPanelFresh = true;
     }
 
     // Present thread: a crop of the left eye with the window's shape (the centre 80% of its
     // height, clear of the lens mask's corners), scaled to fill the window.
     bool mirrorRecord(plume::RenderCommandList *commandList, plume::RenderTexture *target, uint32_t width, uint32_t height) override {
         std::scoped_lock lock(mirrorMutex);
-        if (!mirrorTexture || !mirrorFresh || (width == 0) || (height == 0)) {
+        if ((width == 0) || (height == 0)) {
+            return false;
+        }
+        // While the headset shows the flat panel (menus, pause, title), the window shows it too.
+        const int source = (panelWanted.load() && mirrorPanelTexture && mirrorPanelFresh) ? 1 : 2;
+        if (source != mirrorSourceLogged) {
+            mirrorSourceLogged = source;
+            dk64vr_logf("mirror: the window shows %s", (source == 1) ? "the flat panel" : "the left eye");
+        }
+        if (panelWanted.load() && mirrorPanelTexture && mirrorPanelFresh) {
+            const plume::RenderTextureBarrier toBlit[] = {
+                plume::RenderTextureBarrier(mirrorPanelTexture.get(), plume::RenderTextureLayout::COPY_SOURCE),
+                plume::RenderTextureBarrier(target, plume::RenderTextureLayout::COPY_DEST)
+            };
+            commandList->barriers(plume::RenderBarrierStage::COPY, toBlit, 2);
+            VkImageBlit blit = {};
+            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.layerCount = 1;
+            blit.srcOffsets[1] = { int32_t(mirrorPanelWidth), int32_t(mirrorPanelHeight), 1 };
+            blit.dstSubresource = blit.srcSubresource;
+            blit.dstOffsets[1] = { int32_t(width), int32_t(height), 1 };
+            vkCmdBlitImage(static_cast<plume::VulkanCommandList *>(commandList)->vk,
+                static_cast<plume::VulkanTexture *>(mirrorPanelTexture.get())->vk, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                static_cast<plume::VulkanTexture *>(target)->vk, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+            return true;
+        }
+        if (!mirrorTexture || !mirrorFresh) {
             return false;
         }
         if (!mirrorShownLogged) {
@@ -1751,6 +1800,8 @@ private:
             std::scoped_lock lock(mirrorMutex);  // freed with the session, before the device goes
             mirrorTexture.reset();
             mirrorFresh = false;
+            mirrorPanelTexture.reset();
+            mirrorPanelFresh = false;
         }
         eyeReadback[0].buffer.reset();
         eyeReadback[1].buffer.reset();
@@ -4018,6 +4069,10 @@ private:
     uint32_t mirrorWidth = 0, mirrorHeight = 0;
     bool mirrorFresh = false;
     bool mirrorShownLogged = false;
+    std::unique_ptr<plume::RenderTexture> mirrorPanelTexture;  // the flat panel's copy
+    uint32_t mirrorPanelWidth = 0, mirrorPanelHeight = 0;
+    bool mirrorPanelFresh = false;
+    int mirrorSourceLogged = 0;
     std::mutex camBodyMutex;              // the body pair of the newest workload (camera blend)
     dk64vr_body camBodyPrev = {}, camBodyLast = {};
     bool camBodyValid = false;
