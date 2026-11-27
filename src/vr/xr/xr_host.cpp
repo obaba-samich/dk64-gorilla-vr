@@ -2225,8 +2225,12 @@ private:
     // puts the panel in front after 6 frames. The world comes back when the scene has wanted
     // stereo for 6 frames, fading in from black. Single-frame flips never show (lesson 71).
     void updateFreeze(const dk64vr_game_state &state, bool published) {
-        const bool hold = stereoLatched && published && sceneHolds(state.scene);
-        const bool live = published && sceneIsStereo(state.scene) && cameraSeen;
+        // A transition (a fade, a zipper, the game walking you through a door or into a barrel)
+        // stays live while the game still draws its 3D camera, so its animation shows; only once
+        // the 3D stops (the load itself) is the world held and faded.
+        const bool transitionLive = (state.scene == DK64VR_SCENE_TRANSITION) && cameraSeen && (setting("live_transitions") != 0.0);
+        const bool hold = stereoLatched && published && sceneHolds(state.scene) && !transitionLive;
+        const bool live = published && (sceneIsStereo(state.scene) || transitionLive) && cameraSeen;
         if (!stereoLatched) {
             frozen = false;
             pausePanel = menuPanel = false;

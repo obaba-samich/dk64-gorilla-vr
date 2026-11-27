@@ -39,6 +39,9 @@ static const sfvr_setting_key port_keys[] = {
 	{ "match_height", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// The desktop window shows the left eye (a crop that fills the window) while in the headset.
 	{ "mirror_left_eye", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Map transitions stay live while the game still draws 3D (walk-ins, barrel entries); off:
+	// the last image is held and faded, as the base port did.
+	{ "live_transitions", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	// Immersive cutscenes: the shops' start in first person (right stick click switches any
 	// cutscene between first and third person).
 	{ "cutscene_pov", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
