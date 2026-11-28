@@ -67,7 +67,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Hands let go of ledge sides | 🧪 | 123 contacts in 2 minutes instead of 2 (D29) |
 | Climbing a ledge / step by pulling down | ⬜ | wall contacts from floor-height steps; not exercised by the synthetic hands |
 | Flat walls stop the body | ⬜ | relies on the game's wall pass |
-| Swimming by grip strokes (MonkeSwim, D47) | 🧪 | `diag_swim` with grips: speed builds to the 6.5 m/s cap and glides; unit tests for open hands, glide, cap, averaging, look |
+| Swimming by the swimming motion (D47) | 🧪 | `diag_swim`, no grips: speed builds to the 6.5 m/s cap and glides; unit tests for breaststroke, push down, glide, cap, averaging, look, grip mode |
 | Fixed standing height, head kept over the floor (D47) | 🧪 | `height_offset = -2`: `head: kept 0.15 m over the floor` |
 | Slippery surfaces (Caves ice, slides) | ⬜ | surface 0xC slips (D20); not reached in the sim |
 | Snap turn in first person | 🧪 | `diag_turn_stick`: turns every 8 s while rowing, no hand drag or false throws |

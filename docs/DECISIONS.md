@@ -441,8 +441,13 @@ panel and the world sometimes took a second.
   grip strokes (its trigger; ours are Z and R), the push is `swim_accel` (1.17, its 1.3 x 0.01
   per physics step at 90 Hz) x hand speed along the stroke's running-average direction, leaned
   20% to the look (head pitch counts under water, flat at the surface). Speed builds per axis up
-  to the throw cap (6.5 m/s) and the water takes off 0.2 m/s^2: you glide. `swim_grip` off makes
-  every movement stroke. Headless: up to the cap in DK Isles' water.
+  to the throw cap (6.5 m/s) and the water takes off 0.2 m/s^2: you glide. Headless: up to the
+  cap in DK Isles' water.
+- Then asked for: "swimming should just be a swimming motion". No published Gorilla Tag water
+  code turned up; the hands-only approach VR swimming uses is the stroke itself. Default now
+  (`swim_grip` off): a hand moving against the look (back, down, out) strokes, one reaching
+  forward (cosine > 0.3 towards the look) is the recovery and pushes nothing. `swim_grip` on
+  brings back the closed-hand strokes. Headless: breaststroke without grips reaches the cap.
 - Height: a recentre took the origin's height from the head, wherever it was. Standing, the
   origin now sits `standing_eye_height` (or the View-held-3-s calibration, if that read 1.0 to
   2.05 m over the floor) over the tracked floor every frame. And like GorillaLocomotion's head
