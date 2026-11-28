@@ -57,7 +57,7 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Warp sweep with rowing (D41) | 🧪 | 3 runs: 5, 6, 9 and 11 places with arm locomotion driving, 50 throws; 2 crashes (heap: heapFreeDeferred in the resource list, and an animation load) right as a map's intro cutscene began after a warp; also seen once with no warp. Not tied to arm locomotion yet (one run with it off had no crash; too few). A crash in the first headset session predates this work. The crash report is in the log now |
 | Tag Anywhere swap under stress (D43) | 🧪 | forced swaps every 15 s during warp tours: 3 of 4 runs crashed before, 0 of 2 after (40 warps, 14 swaps) |
 | Trees: the game lets go, grips hold (D44) | 🧪 | the rowing ran into a tree (state 13) and the let-go fired; holding with grips only unit tested |
-| Hands into barrels (D39) | ⬜ | the jump starts and the body is held at a barrel; no open barrel in reach on the simulator's saves |
+| Bodies into barrels (D47) | 🧪 | `diag_barrel`: DK Isles' Tag Barrel took the body (Kong at its centre, barrel state 1); training/bonus barrels not reached |
 | Left eye mirrored on the monitor (D39) | 🧪 | starts (`mirror: left eye on the desktop window`), clean exit; the window itself not looked at |
 | Head moves inside the body (D37) | ✅ unit test | head bobbing leaves the body still; crouching puts the hands on the floor |
 | Real floor from the STAGE space, world sized to your eye height (D34) | 🧪 | `floor: tracked, eyes 1.62 m above it`; scale 12.9 units/m for DK |
@@ -67,7 +67,8 @@ dumps and logs) · ⬜ not checked yet · ❌ known broken / not implemented
 | Hands let go of ledge sides | 🧪 | 123 contacts in 2 minutes instead of 2 (D29) |
 | Climbing a ledge / step by pulling down | ⬜ | wall contacts from floor-height steps; not exercised by the synthetic hands |
 | Flat walls stop the body | ⬜ | relies on the game's wall pass |
-| Swimming by paddling, under water and at the surface | ⬜ | code in, never reached in the sim |
+| Swimming by grip strokes (MonkeSwim, D47) | 🧪 | `diag_swim` with grips: speed builds to the 6.5 m/s cap and glides; unit tests for open hands, glide, cap, averaging, look |
+| Fixed standing height, head kept over the floor (D47) | 🧪 | `height_offset = -2`: `head: kept 0.15 m over the floor` |
 | Slippery surfaces (Caves ice, slides) | ⬜ | surface 0xC slips (D20); not reached in the sim |
 | Snap turn in first person | 🧪 | `diag_turn_stick`: turns every 8 s while rowing, no hand drag or false throws |
 | Recentre with a hand held | ⬜ | hands reset on a head jump over 35 cm (D25); needs a real recentre |
@@ -130,4 +131,9 @@ with each build. Results go here, per level:
 - `diag_climb = 180` (after `diag_gorilla`): each map, the Kong is put by the nearest climbable and
   climbs hand over hand with the grips. Look for `diag climb: y ... holding 1` going up.
 - `diag_swim = 150` (after `diag_gorilla`): finds deep water near the start, drops in and
-  breaststrokes. Look for `swimming: ... speed` lines. Gloomy Galleon (`diag_warp_first = 6`) works.
+  breaststrokes with the grips closed on the pull. Look for `swimming: ... speed` lines. The warp
+  tour's first warp comes only after `diag_warp_tour` seconds, so with the tour off it swims in
+  DK Isles' water.
+- `diag_barrel = 120` (after `diag_gorilla`): looks for an open barrel (sweeping rings round the
+  start, barrels spawn within ~550 units), stands 30 units off it and walks the body in. Look for
+  `body in a barrel` and `in a barrel: ... it took us`.

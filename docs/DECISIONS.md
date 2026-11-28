@@ -432,3 +432,34 @@ Asked for: DK64's real arms instead of the box arms.
 - Next: log the posed wrist position against the eye and the hand target, and check the
   player's model is drawn at all in first person; then eye dumps per Kong, a warp tour, and the
   headset.
+
+### D47. MonkeSwim swimming, a fixed standing height, bodies into barrels, faster 2D/3D switches
+Eleventh headset test (wired): swimming felt horrible, recentring high then crouching went
+through the floor, tapping the practice barrels did nothing, and switching between the flat
+panel and the world sometimes took a second.
+- Swimming is MonkeSwim's (AHauntedArmy/MonkeSwim, GPL-3.0, same licence as this repo): a closed
+  grip strokes (its trigger; ours are Z and R), the push is `swim_accel` (1.17, its 1.3 x 0.01
+  per physics step at 90 Hz) x hand speed along the stroke's running-average direction, leaned
+  20% to the look (head pitch counts under water, flat at the surface). Speed builds per axis up
+  to the throw cap (6.5 m/s) and the water takes off 0.2 m/s^2: you glide. `swim_grip` off makes
+  every movement stroke. Headless: up to the cap in DK Isles' water.
+- Height: a recentre took the origin's height from the head, wherever it was. Standing, the
+  origin now sits `standing_eye_height` (or the View-held-3-s calibration, if that read 1.0 to
+  2.05 m over the floor) over the tracked floor every frame. And like GorillaLocomotion's head
+  collider, the eyes stop 0.15 m over the floor under the body (the game publishes
+  `eye_floor_gap`). Headless with `height_offset = -2`: `head: kept 0.15 m over the floor`.
+- Barrels never took us because: the check read `interactable` (0x5C, another bitfield) instead
+  of the interaction type at 0x132; the world's Tag Barrels are types 136/137 ("World/Troff k
+  swap barrel"), not 98; and the first-person hide scaled the player's matrix to nothing, which
+  shrank its hit spheres too. Training barrels (134) only spawn within ~550 units. Now the body
+  touching an open barrel gets what the game's collision result does for event 6
+  (actorAppendCallback 0x40 and 0x80, the barrel as move target: func_global_asm_80679200 /
+  8067A70C), nothing drives the Kong for up to 6 s while the barrel pulls it in, and state 66
+  after a body entry counts as inside a Tag Barrel (66 is also a frozen hang). The body is hidden
+  by folding its bones in the draw's copy (as D46 does), not by the matrix. Headless
+  (`diag_barrel`): DK Isles' Tag Barrel pulled the Kong to its centre and went to state 1.
+- Switches: panel/world 12 -> 4 display frames, back from a held transition 6 -> 2, cinema in/out
+  6/24 -> 3/8, blink 0.2 -> 0.1 s, fade-in 0.3 -> 0.15 s. Scene, mode, camera, cinema and freeze
+  log lines now say how long after the scene change they came.
+Not checked: any of it in the headset; bonus and training barrels taking the body (none spawned
+in the simulator's reach).
