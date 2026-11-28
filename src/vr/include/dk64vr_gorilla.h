@@ -57,7 +57,7 @@ typedef struct dk64vr_hands {
     int32_t hide_cutscene_bars; // immersive cutscenes: no letterbox bars stuck to your view
     int32_t cutscene_pov;    // shops' cutscenes start in first person (the Kong's eyes)
     int32_t pov_choice;      // this cutscene: -1 its default, 0 third person, 1 first person
-    int32_t diag_climb;      // diagnostics: 1 put the Kong at the nearest tree (climb it), 2 drop it in water (swim)
+    int32_t diag_climb;      // diagnostics: 1 put the Kong at the nearest tree (climb it), 2 drop it in water (swim), 3 walk into a barrel
     int32_t real_arms;       // first person shows the Kong's own arms (else the box arms)
     float head_look_up;      // sine of the head's pitch (1 straight up): swimming heads that way
     int32_t swim_grip;       // swimming: a closed grip strokes (MonkeSwim's trigger); 0: any movement

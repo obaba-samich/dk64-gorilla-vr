@@ -85,6 +85,9 @@ static const sfvr_setting_key port_keys[] = {
 	{ "diag_climb", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: after diag_gorilla's rowing, breaststroke for this many seconds. 0 = off.
 	{ "diag_swim", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
+	// Diagnostic: after diag_gorilla's rowing, put the body by the nearest open barrel and move
+	// it in, for this many seconds (the log says whether the barrel took it). 0 = off.
+	{ "diag_barrel", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: unlock everything (the Testing tab's button) once arm locomotion starts.
 	{ "diag_unlock", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Diagnostic: every this many seconds of play, warp to the next place on the Testing tab's

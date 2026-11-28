@@ -2764,6 +2764,12 @@ private:
                 diagClimb = true;   // keep the scripted grips
             }
         }
+        if ((setting("diag_barrel") > 0.0) && stereoLatched && (diagGorillaStartS != 0.0) && !diagClimb) {
+            const double t = displayS - diagGorillaStartS - setting("diag_gorilla");
+            if ((t >= 0.0) && (t < setting("diag_barrel"))) {
+                h.diag_climb = 3;   // the game side: walk the body into the nearest open barrel
+            }
+        }
         bool diagGestures = false;
         if ((setting("diag_gestures") > 0.0) && stereoLatched) {
             const double rowFor = setting("diag_gorilla");

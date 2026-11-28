@@ -282,6 +282,10 @@ static VrHands vr_hands;
 static VrBody vr_body;
 static s32 vr_active;              // arm locomotion drove the player this frame
 static s32 vr_hide_body = 1;       // first person: don't draw the player's own model
+extern Actor *actor_list[256];
+extern s16 actor_count;
+static Actor *vr_barrel_target;    // the barrel the body went into
+static s32 vr_barrel_hold;         // frames the game gets to pull the Kong into it
 static s32 vr_in_water;
 static f32 vr_yaw;                 // body heading (radians, game convention)
 static f32 vr_height;              // eyes above the feet at the recentre pose, world units
@@ -425,9 +429,16 @@ static s32 vr_state_carrying(u8 st) {
     return st >= 70 && st <= 77;
 }
 
+static Actor *vr_barrel_inside;   // the Tag Barrel the body went into (until the Kong leaves 66)
+
 static s32 vr_in_tag_barrel(Actor *player) {
     u8 st = player->control_state;
-    return st == 7 || st == 0xA || st == 0xB;
+    if (st != 66) {
+        vr_barrel_inside = NULL;
+    }
+    // 66 is also a frozen hang, so it only counts after the body went into a barrel (headless:
+    // the barrel pulls the Kong to its centre, goes to state 1, and the Kong waits in 66)
+    return st == 7 || st == 0xA || st == 0xB || (st == 66 && vr_barrel_inside != NULL);
 }
 
 static s32 vr_body_mode;
@@ -557,6 +568,30 @@ static s32 vr_should_drive(Actor *player) {
         || current_map == MAP_SNIDES_HQ) {
         // the shops are menus: the sticks pick moves and items, the game's camera shows them
         vr_body_mode = VR_BODY_THIRD_PERSON;
+        return 0;
+    }
+    if (vr_barrel_hold > 0) {
+        // the body just went into a barrel: the game pulls the Kong in (it freezes, state 66),
+        // so nothing may drive it or make it let go of anything meanwhile
+        s32 i, alive = 0;
+        for (i = 0; i < actor_count && i < 256; i++) {
+            if (actor_list[i] == vr_barrel_target) {
+                alive = 1;
+            }
+        }
+        vr_barrel_hold--;
+        if ((vr_barrel_hold % 10) == 0 || !alive || vr_in_tag_barrel(player)) {
+            recomp_printf("[vr-loco] in a barrel: state %d, barrel state 0x%X, %.0f from it%s\n", player->control_state,
+                alive ? vr_barrel_target->control_state : -1,
+                alive ? vr_sqrt((player->x_position - vr_barrel_target->x_position) * (player->x_position - vr_barrel_target->x_position)
+                    + (player->z_position - vr_barrel_target->z_position) * (player->z_position - vr_barrel_target->z_position)) : -1.0f,
+                vr_in_tag_barrel(player) ? ", it took us" : (alive ? "" : ", it's gone (a bonus barrel's map change)"));
+        }
+        if (!alive || vr_in_tag_barrel(player)) {
+            vr_barrel_hold = 0;
+            vr_barrel_target = NULL;
+        }
+        vr_body_mode = VR_BODY_BARREL;
         return 0;
     }
     if (vr_in_tag_barrel(player)) {
@@ -975,23 +1010,29 @@ static void vr_test_requests(Actor *player) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Hands into barrels. The game only lets the player's body enter a barrel (Tag Barrels, bonus
+// Bodies into barrels. The game only lets the player's body enter a barrel (Tag Barrels, bonus
 // and training barrels, blast barrels, Mini Monkey / Hunky Chunky / Strong Kong / Orangstand
-// barrels). In Gorilla Tag you'd reach out and touch it, so a hand that touches one puts the
-// body in it the way a jump would: the game lets a barrel take the player only while a jump
-// animation is playing (the player's interaction type comes from its animation frames), so the
-// hand starts a jump (A, from the host) and the body is held at the barrel's centre until the
-// barrel takes it (Tag Barrel state 7, a bonus barrel's map change) or a second passes.
+// barrels), and only while a jump animation is playing (the player's interaction type comes from
+// its animation frames). With arm locomotion the Kong is never in such a move, so the body
+// touching an open barrel enters it the way the game's collision result would. Hands used to
+// start a jump and hold the body in the barrel instead; it never took us (headset and simulator),
+// and in Gorilla Tag it's your body that goes in.
 
-extern Actor *actor_list[256];
-extern s16 actor_count;
 static s32 vr_barrel_cooldown;
-static Actor *vr_barrel_target;  // the barrel a hand touched
-static s32 vr_barrel_hold;        // frames left holding the body in it
+static Actor *vr_barrel_logged;   // the last barrel logged as near the body
+static s32 vr_diag_barrel_placed;
+static s32 vr_diag_barrel_map = -1;
+static s32 vr_diag_barrel_spot;
+static f32 vr_diag_barrel_home[3];
+
+void func_global_asm_80679200(Actor *arg0, Actor *arg1, s32 arg2, u8 arg3, s32 arg4, void *arg5);
+void func_global_asm_8067A70C(Actor *arg0, Actor *arg1, f32 arg2, f32 arg3, f32 arg4, u8 arg5, u8 arg6);
 
 static s32 vr_is_barrel(s32 type) {
     switch (type) {
         case ACTOR_TAG_BARREL:
+        case 136:   // the Tag Barrel in the world (the actor list's "World k swap barrel")
+        case 137:   // and its "Troff k swap barrel"
         case ACTOR_BONUS_BARREL:
         case ACTOR_BONUS_BARREL_HELM:
         case ACTOR_BONUS_TRAINING:
@@ -1008,30 +1049,8 @@ static s32 vr_is_barrel(s32 type) {
     }
 }
 
-static void vr_hand_barrels(Actor *player) {
+static void vr_body_barrels(Actor *player) {
     s32 i, h, n = actor_count;
-    if (vr_barrel_hold > 0) {
-        Actor *a = vr_barrel_target;
-        s32 alive = 0;
-        for (i = 0; i < n && i < 256; i++) {
-            if (actor_list[i] == a) {
-                alive = 1;
-            }
-        }
-        vr_barrel_hold--;
-        if (!alive || vr_in_tag_barrel(player) || vr_barrel_hold == 0) {
-            recomp_printf("[vr-loco] barrel %s\n", vr_in_tag_barrel(player) ? "took us" : (alive ? "didn't take us" : "gone (taken)"));
-            vr_barrel_hold = 0;
-            vr_barrel_target = NULL;
-            return;
-        }
-        // in the jump, held at its centre so its box and ours overlap
-        player->x_position = a->x_position;
-        player->y_position = a->y_position + 8.0f;
-        player->z_position = a->z_position;
-        player->unkB8 = 0.0f;
-        return;
-    }
     if (vr_barrel_cooldown > 0) {
         vr_barrel_cooldown--;
         return;
@@ -1039,29 +1058,102 @@ static void vr_hand_barrels(Actor *player) {
     if (n > 256) {
         n = 256;
     }
-    for (i = 0; i < n; i++) {
-        Actor *a = actor_list[i];
-        if (a == NULL || a == player || (u32)a == 0xFFFFFFFF || !vr_is_barrel(a->unk58)) {
-            continue;
-        }
-        // hidden (state 0x14) or not taking anyone right now (interaction type isn't 1)
-        if (a->control_state == 0x14 || !(a->interactable & 1)) {
-            continue;
-        }
-        for (h = 0; h < 2; h++) {
-            // a barrel stands on its position, about DK's height tall
-            f32 dx = vr_loco.hand[h].pos.x - a->x_position, dz = vr_loco.hand[h].pos.z - a->z_position;
-            f32 dy = vr_loco.hand[h].pos.y - a->y_position;
-            f32 r = 20.0f + vr_params.hand_radius;   // generous: a hand anywhere on or near it
-            if (dx * dx + dz * dz < r * r && dy > -10.0f && dy < 45.0f) {
-                recomp_printf("[vr-loco] hand %d on a barrel (actor type %d): jump in\n", h, a->unk58);
+    {
+        Actor *nearest = NULL;
+        f32 nearest_d2 = 1e12f;
+        for (i = 0; i < n; i++) {
+            Actor *a = actor_list[i];
+            f32 dx, dz, dy, d2, r;
+            if (a == NULL || a == player || (u32)a == 0xFFFFFFFF || !vr_is_barrel(a->unk58)) {
+                continue;
+            }
+            dx = player->x_position - a->x_position;
+            dz = player->z_position - a->z_position;
+            dy = player->y_position - a->y_position;
+            d2 = dx * dx + dz * dz;
+            if (d2 < nearest_d2 && a->control_state != 0x14 && a->unk132 == 1) {
+                nearest = a;
+                nearest_d2 = d2;
+            }
+            if ((d2 < 80.0f * 80.0f || vr_hands.diag_climb == 3) && a != vr_barrel_logged) {
+                // what a barrel near the body is doing (why one doesn't take us)
+                vr_barrel_logged = a;
+                recomp_printf("[vr-loco] barrel near: type %d, state 0x%X, interaction type %d, %.0f away, dy %.0f\n",
+                    a->unk58, a->control_state, a->unk132, vr_sqrt(d2), dy);
+            }
+            // hidden (state 0x14) or not taking anyone right now (interaction type, 0x132, isn't 1;
+            // the old decomp's "interactable" at 0x5C is another bitfield, which is why hands never
+            // got a barrel to take them)
+            if (a->control_state == 0x14 || a->unk132 != 1) {
+                continue;
+            }
+            // Gorilla Tag: your body goes in, like walking or swinging into it (hands don't). A
+            // barrel's position is about 40 units over the ground it sits on (a Tag Barrel in DK
+            // Isles: the Kong standing next to it is 39 under), so the feet count from a bit
+            // under that ground up to a little over the barrel's middle
+            r = 16.0f + vr_params.body_radius;
+            if (d2 < r * r && dy > -60.0f && dy < 25.0f) {
+                // what the game does when its collision pairs a jumping Kong with a barrel (event 6
+                // in the collision results, 7CA80_actor_manager.c): the barrel takes the player
+                // (callbacks 0x40 and 0x80) and becomes its move target. With arm locomotion the
+                // Kong is never in a move the game pairs, so do it here.
+                recomp_printf("[vr-loco] body in a barrel (actor type %d): in we go\n", a->unk58);
+                func_global_asm_80679200(player, a, 0x40, 0, 0, NULL);
+                func_global_asm_8067A70C(a, player, a->x_position, a->y_position, a->z_position, 2, 1);
+                func_global_asm_80679200(player, a, 0x80, 0, 0, NULL);
                 vr_barrel_target = a;
-                vr_barrel_hold = 30;
-                vr_barrel_cooldown = 45;
-                vr_launch_count++;     // the host's short A press: the jump
+                vr_barrel_inside = a;
+                vr_barrel_hold = 180;
+                vr_barrel_cooldown = 240;
                 vr_fly_end("into a barrel");
                 vr_initialised = 0;    // the hands start fresh wherever the barrel takes us
                 return;
+            }
+        }
+        if (current_map != vr_diag_barrel_map) {
+            vr_diag_barrel_map = current_map;
+            vr_diag_barrel_placed = 0;
+            vr_diag_barrel_spot = 0;
+        }
+        if (vr_hands.diag_climb == 3 && !vr_diag_barrel_placed && nearest == NULL && (vr_frame % 45) == 0
+            && vr_diag_barrel_spot < 8 * 6) {
+            // barrels only spawn within ~550 units of the Kong: look around the map's start in
+            // rings 350 units apart until one does
+            s32 ring = 1 + vr_diag_barrel_spot / 8, k = vr_diag_barrel_spot % 8;
+            f32 ang = (f32)k * 0.785398f, fy;
+            f32 x, z;
+            if (vr_diag_barrel_spot == 0) {
+                vr_diag_barrel_home[0] = player->x_position;
+                vr_diag_barrel_home[1] = player->y_position;
+                vr_diag_barrel_home[2] = player->z_position;
+            }
+            x = vr_diag_barrel_home[0] + vr_sin(ang) * 350.0f * (f32)ring;
+            z = vr_diag_barrel_home[2] + vr_cos(ang) * 350.0f * (f32)ring;
+            vr_diag_barrel_spot++;
+            if ((vr_diag_barrel_spot % 8) == 1) {
+                recomp_printf("[vr-loco] diag barrel: no open barrel yet (%d actors), looking %d units out\n", n, ring * 350);
+            }
+            if (vr_floor_at(player, x, z, vr_diag_barrel_home[1] + 300.0f, &fy)) {
+                player->x_position = x;
+                player->z_position = z;
+                player->y_position = fy;
+                vr_initialised = 0;
+            }
+        }
+        if (vr_hands.diag_climb == 3 && nearest != NULL) {
+            // diagnostics (diag_barrel): stand 30 units off the nearest open barrel, then move
+            // the body into it a unit a frame
+            f32 d = vr_sqrt(nearest_d2);
+            if (!vr_diag_barrel_placed) {
+                vr_diag_barrel_placed = 1;
+                player->x_position = nearest->x_position + 30.0f;
+                player->z_position = nearest->z_position;
+                player->y_position = nearest->y_position;
+                vr_initialised = 0;
+                recomp_printf("[vr-loco] diag barrel: placed 30 units off a barrel (type %d, was %.0f away)\n", nearest->unk58, d);
+            } else if (d > 1.0f) {
+                player->x_position -= (player->x_position - nearest->x_position) / d;
+                player->z_position -= (player->z_position - nearest->z_position) / d;
             }
         }
     }
@@ -1386,7 +1478,7 @@ void vr_gorilla_pre_frame(void) {
             recomp_printf("[vr-loco] diag climb: y %.0f (%+.0f), state %d, holding %d\n", player->y_position,
                 player->y_position - vr_climb_diag_y, st, vr_grip_climbing);
         }
-        if ((st == 13 || st == 66 || st == 93 || st == 94) && vr_tree_cooldown == 0 && vr_extra_frames == 0) {
+        if ((st == 13 || (st == 66 && vr_barrel_cooldown == 0) || st == 93 || st == 94) && vr_tree_cooldown == 0 && vr_extra_frames == 0) {
             // remember where it latched: a trunk (or ladder, ledge) the grips can hold from now on
             s32 k, known = 0;
             for (k = 0; k < vr_tree_count; k++) {
@@ -1578,7 +1670,7 @@ void vr_gorilla_pre_frame(void) {
         // the movement patch puts the body here; next frame shows what the game did to it
         vr_fly_expect = vr_loco.body;
     }
-    vr_hand_barrels(player);
+    vr_body_barrels(player);
     vr_hand_carry(player);
     vr_gorilla_gestures(player, &in, dt);
     vr_tag_anywhere(player);
@@ -1836,17 +1928,6 @@ RECOMP_PATCH void renderActor(Actor *arg0, u8 arg1) {
         }
     }
 
-    // (with the Kong's own arms the model keeps its size: the draw folds the body away instead)
-    if ((vr_active || vr_pov) && vr_hide_body && !vr_real_arms_wanted() && character_change_array != NULL
-        && arg0 == character_change_array[0].playerPointer) {
-        f32 (*m)[4] = (f32 (*)[4])(void *)&arg0->unkC;
-        s32 r, c;
-        for (r = 0; r < 3; r++) {
-            for (c = 0; c < 3; c++) {
-                m[r][c] *= 0.0001f;
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2225,9 +2306,27 @@ Mtx *vr_gorilla_pose_body(Actor *actor, Mtx *bones, s32 count) {
     gtl_vec3 eye, right, fwd;
     f32 yaw;
 
-    if (!vr_real_arms_wanted() || character_change_array == NULL || actor != character_change_array[0].playerPointer
+    if (character_change_array == NULL || actor != character_change_array[0].playerPointer
         || bones == NULL || count <= 0) {
         return bones;
+    }
+    if (!vr_real_arms_wanted()) {
+        if (!((vr_active || vr_pov) && vr_hide_body)) {
+            return bones;
+        }
+        // First person without the Kong's own arms: the whole body folds into the eyes, in the
+        // draw's copy only. (Shrinking the actor's matrix instead also shrank the bones its hit
+        // spheres come from, so barrels and anything else the body bumps into never felt it.)
+        if (count > VR_ARM_MAX_BONES) {
+            count = VR_ARM_MAX_BONES;
+        }
+        out = vr_arm_mtx[D_global_asm_807444FC & 1];
+        eye = vr_arm_head();
+        for (i = 0; i < count; i++) {
+            guMtxL2F(m, &bones[i]);
+            vr_bone_fold(m, &out[i], eye);
+        }
+        return out;
     }
     if (count > VR_ARM_MAX_BONES) {
         count = VR_ARM_MAX_BONES;   // more than any Kong has; the rest are drawn as the game has them
