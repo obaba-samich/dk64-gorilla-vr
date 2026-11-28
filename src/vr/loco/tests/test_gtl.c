@@ -502,14 +502,42 @@ static void test_water_look_assist(void) {
 }
 
 static void test_water_stroke_always(void) {
-    /* no button: every movement strokes */
+    /* no button: pulling back strokes */
     rig r;
     rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
     r.in.mode = GTL_MODE_WATER;
     r.in.stroke_always = 1;
+    r.in.look = V(0, 0, 1);
     rig_start(&r, V(0, 50, 0));
     rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
     CHECK(r.s.velocity.z > 5.0f, "stroke_always should swim, vz %f", r.s.velocity.z);
+}
+
+static void test_water_motion_breaststroke(void) {
+    /* no button, even speed back and forth: the reach forward is the recovery, so you go forward */
+    rig r;
+    int i;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    r.in.stroke_always = 1;
+    r.in.look = V(0, 0, 1);
+    rig_start(&r, V(0, 50, 0));
+    for (i = 0; i < 6; i++) {
+        rig_step(&r, 16, V(0, 0, -0.5f), V(0, 0, -0.5f), Z3);
+        rig_step(&r, 16, V(0, 0, 0.5f), V(0, 0, 0.5f), Z3);
+    }
+    CHECK(r.s.body.z > 20.0f, "breaststroke should swim forward, z %f", r.s.body.z);
+}
+
+static void test_water_motion_push_down_rises(void) {
+    rig r;
+    rig_init(&r, V(-4, -2, 6), V(4, -2, 6));
+    r.in.mode = GTL_MODE_WATER;
+    r.in.stroke_always = 1;
+    r.in.look = V(0, 0, 1);
+    rig_start(&r, V(0, 50, 0));
+    rig_step(&r, 16, V(0, -0.5f, 0), V(0, -0.5f, 0), Z3);
+    CHECK(r.s.velocity.y > 5.0f, "pushing down should lift, vy %f", r.s.velocity.y);
 }
 
 static void test_water_still_is_still(void) {
@@ -658,6 +686,8 @@ int main(void) {
         { "water speed cap", test_water_speed_cap },
         { "water stroke direction averages", test_water_stroke_direction_averages },
         { "water stroke always", test_water_stroke_always },
+        { "water breaststroke by motion", test_water_motion_breaststroke },
+        { "water push down rises", test_water_motion_push_down_rises },
         { "still water is still", test_water_still_is_still },
         { "frozen mode", test_frozen_mode },
         { "reset teleports", test_reset_teleports },

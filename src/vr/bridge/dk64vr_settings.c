@@ -51,10 +51,10 @@ static const sfvr_setting_key port_keys[] = {
 	// First person shows the Kong's own arms, posed to the controllers. Off: the box arms.
 	// Off by default until the arms show up in the eye dumps (docs/DECISIONS.md D46).
 	{ "real_arms", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
-	// Swimming (MonkeSwim's stroke): a closed grip strokes, open hands reach back without
-	// pushing. Off: every hand movement strokes. swim_accel is the speed a stroke gives per
-	// second per metre a second of hand speed.
-	{ "swim_grip", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// Swimming (MonkeSwim's stroke): off (default), the swimming motion strokes on its own:
+	// pulling back, down or out pushes, reaching forward doesn't. On: only a closed grip
+	// strokes. swim_accel is the speed a stroke gives per second per metre a second of hand speed.
+	{ "swim_grip", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	{ "swim_accel", SFVR_SETTING_FLOAT, 1.17, 0.2, 4.0, NULL },
 	// Release speed multiplier and cap (metres a second of world speed).
 	{ "jump_multiplier", SFVR_SETTING_FLOAT, 1.1, 0.5, 3.0, NULL },

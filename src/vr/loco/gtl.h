@@ -77,6 +77,8 @@ typedef struct gtl_params {
     float paddle_look;         /* each stroke leans this much (fraction) towards where you
                                   look, so swimming heads where you face (MonkeSwim: 0.2) */
     float paddle_deadzone;     /* hand speeds below this (units/s) don't stroke (tracking noise) */
+    float swim_recovery;       /* stroke_always: a hand moving towards the look by more than this
+                                  (cosine) is reaching forward, the recovery, and doesn't push */
     float buoyancy;            /* units/s^2 upwards while in water, offsets gravity */
 
     int max_slide_iterations;
@@ -99,8 +101,8 @@ typedef struct gtl_input {
     gtl_vec3 look;             /* where the head faces, unit length (zero: no look assist) */
     int hand_stroke[2];        /* water: this hand strokes now (MonkeSwim: trigger held; ours: the
                                   grip). The stroke's direction averages from when it began */
-    int stroke_always;         /* water: every hand movement strokes, no button (each frame its
-                                  own direction, so even strokes back and forth cancel) */
+    int stroke_always;         /* water: no button, the swimming motion strokes: pulling back,
+                                  down or out pushes, reaching forward (towards the look) doesn't */
     int mode;
     int external_flight;       /* the game owns gravity and free flight: when no hand holds,
                                   only room-scale moves the body and a release just reports

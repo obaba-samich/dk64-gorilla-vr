@@ -70,6 +70,7 @@ void gtl_default_params(gtl_params *p) {
     p->swim_resistance = 0.2f * 15.0f;
     p->swim_max_speed = 6.5f * 15.0f;
     p->paddle_look = 0.2f;
+    p->swim_recovery = 0.3f;
     p->paddle_deadzone = 0.015f * 15.0f;
     p->buoyancy = 150.0f;
 
@@ -385,12 +386,19 @@ void gtl_step(gtl_state *s, const gtl_params *p, const gtl_world *w, const gtl_i
             float moved = vlen(w, raw);
             gtl_vec3 dir;
             float sp, dl;
-            if (!in->hand_enabled[h] || hd->touching || !(in->hand_stroke[h] || in->stroke_always)
-                || moved > p->arm_length) {
+            int stroke = in->hand_stroke[h];
+            if (in->stroke_always && moved > GTL_EPS) {
+                /* No button: the swimming motion itself. A hand pulling back, down or out
+                 * (against where you look) is a stroke; a hand reaching forward is the recovery
+                 * and pushes nothing, so breaststroke and crawl move you forward. */
+                float ahead = vdot(raw, in->look) / moved;   /* raw is the hand's way back */
+                stroke = (vlen(w, in->look) < GTL_EPS) || (ahead > -p->swim_recovery);
+            }
+            if (!in->hand_enabled[h] || hd->touching || !stroke || moved > p->arm_length) {
                 hd->stroking = 0;   /* released (or a tracking jump): the next stroke starts fresh */
                 continue;
             }
-            if (!hd->stroking || in->stroke_always) {
+            if (!hd->stroking) {
                 hd->stroking = 1;
                 hd->stroke_sum = raw;
             } else {

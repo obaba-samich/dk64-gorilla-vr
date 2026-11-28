@@ -222,7 +222,7 @@ std::vector<Row> buildRows() {
         { "real_arms", "real_arms", C, "Kong's own arms", K::Toggle, {}, 0, 0, 0, F::None,
           "Experimental, not working yet: your hands become the Kong's real arms. Off: simple block arms.", W::Always, false, Virt::None, nullptr },
         { "swim_grip", "swim_grip", C, "Swim with grips", K::Toggle, {}, 0, 0, 0, F::None,
-          "In water, close a grip and pull to stroke, open it to reach back. Off: every arm movement strokes.", W::Always, false, Virt::None, nullptr },
+          "Off: just swim, pulling back pushes you and reaching forward doesn't. On: only a closed grip strokes.", W::Always, false, Virt::None, nullptr },
         { "swim_accel", "swim_accel", C, "Swim strength", K::Slider, {}, 0.2, 4, 0.05, F::Times2,
           "How much speed each stroke gives.", W::Always, false, Virt::None, nullptr },
         { "jump_multiplier", "jump_multiplier", C, "Throw strength", K::Slider, {}, 0.5, 3, 0.05, F::Times2,

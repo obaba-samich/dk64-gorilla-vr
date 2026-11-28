@@ -1402,8 +1402,8 @@ void vr_gorilla_pre_frame(void) {
         if (has_water && (head_y < water_y || vr_surface_swim)) {
             in.mode = GTL_MODE_WATER;
             in.external_flight = 0;
-            // MonkeSwim strokes while its trigger is held; here a closed grip strokes (the
-            // triggers are the game's Z and R) and open hands reach back for free
+            // By default the swimming motion strokes by itself (pull back to go, reach forward
+            // for free); with swim_grip, as in MonkeSwim (its trigger), only a closed grip does
             in.hand_stroke[0] = vr_hands.grip[0] > 0.5f;
             in.hand_stroke[1] = vr_hands.grip[1] > 0.5f;
             in.stroke_always = !vr_hands.swim_grip;
