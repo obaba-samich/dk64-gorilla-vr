@@ -602,8 +602,8 @@ public:
 
         if ((info.cameraProjections > 0) != cameraSeen) {
             cameraSeen = (info.cameraProjections > 0);
-            dk64vr_logf("camera: %u projection(s) in the main image %08X (%s)", info.cameraProjections, info.mainColorAddress,
-                info.cameraFromGroup ? "camera matrix group" : "any perspective");
+            dk64vr_logf("camera: %u projection(s) in the main image %08X (%s), %.2f s after the scene changed", info.cameraProjections, info.mainColorAddress,
+                info.cameraFromGroup ? "camera matrix group" : "any perspective", monotonicSeconds() - sceneChangedMonoS);
         }
     }
 
@@ -2151,8 +2151,10 @@ private:
         const dk64vr_game_state state = gameState();
         const bool published = (state.frame != 0);
         if (published && (state.scene != lastScene)) {
-            dk64vr_logf("scene: %s -> %s", sceneName(lastScene), sceneName(state.scene));
+            dk64vr_logf("scene: %s -> %s (%.2f s after the last)", sceneName(lastScene), sceneName(state.scene), displayS - sceneChangedS);
             lastScene = state.scene;
+            sceneChangedS = displayS;
+            sceneChangedMonoS = monotonicSeconds();
         }
 
         settingsPreview = vrMenuOpen && focused && !synthetic && !probing && published && cameraSeen
@@ -2215,14 +2217,16 @@ private:
             why = "no game state";
         }
 
-        // Hysteresis: the scene can reach us a frame early or late, so a change must hold.
+        // Hysteresis: the scene can reach us a frame early or late, so a change must hold. Only
+        // single-frame flips need filtering (lesson 71); 12 frames, with the blink, made the
+        // switch between the flat panel and the world feel like a second in the headset.
         if (want != stereoLatched) {
-            if (++latchCount >= 12) {
+            if (++latchCount >= 4) {
                 stereoLatched = want;
                 latchCount = 0;
                 transitionBlink();
                 resetCameraSmoothing();
-                dk64vr_logf("mode: %s (%s, %u camera projection(s))", want ? "stereo" : "panel", why, lastInfo.cameraProjections);
+                dk64vr_logf("mode: %s (%s, %u camera projection(s), %.2f s after the scene changed)", want ? "stereo" : "panel", why, lastInfo.cameraProjections, displayS - sceneChangedS);
             }
         }
         else {
@@ -2235,16 +2239,16 @@ private:
         }
 
         // The 3D cinema for cutscenes and scripted cameras (standard.md section 4), latched with
-        // hysteresis (lesson 71): in after 6 frames of cutscene, out after 24 without.
+        // hysteresis (lesson 71): in after 3 frames of cutscene, out after 8 without.
         const bool cinemaWant = stereoLatched && published && (state.scene == DK64VR_SCENE_CUTSCENE) && (int(setting("cutscenes")) == 0);
         if (cinemaWant != cinemaActive) {
-            if (++cinemaLatchCount >= (cinemaWant ? 6u : 24u)) {
+            if (++cinemaLatchCount >= (cinemaWant ? 3u : 8u)) {
                 cinemaActive = cinemaWant;
                 cinemaLatchCount = 0;
                 cinemaAnchored = false;
                 transitionBlink();
                 resetCameraSmoothing();
-                dk64vr_logf("cinema: %s", cinemaActive ? "on" : "off");
+                dk64vr_logf("cinema: %s (%.2f s after the scene changed)", cinemaActive ? "on" : "off", displayS - sceneChangedS);
             }
         }
         else {
@@ -2260,7 +2264,7 @@ private:
     // world freezes at once on the last stereo images (submitted again with their own poses, so
     // they stay world-locked), a map transition fades it to black, the pause menu dims it and
     // puts the panel in front after 6 frames. The world comes back when the scene has wanted
-    // stereo for 6 frames, fading in from black. Single-frame flips never show (lesson 71).
+    // stereo for 2 frames, fading in from black (0.15 s). Single-frame flips never show (lesson 71).
     void updateFreeze(const dk64vr_game_state &state, bool published) {
         // A transition (a fade, a zipper, the game walking you through a door or into a barrel)
         // stays live while the game still draws its 3D camera, so its animation shows; only once
@@ -2284,12 +2288,12 @@ private:
 
         if (frozen) {
             if (live && !hold && !menuPanel) {
-                if (++freezeLiveCount >= 6) {
+                if (++freezeLiveCount >= 2) {
                     frozen = false;
                     pausePanel = false;
                     pauseCount = 0;
                     resetCameraSmoothing();
-                    dk64vr_logf("freeze: off (%s)", sceneName(state.scene));
+                    dk64vr_logf("freeze: off (%s, %.2f s after the scene changed)", sceneName(state.scene), displayS - sceneChangedS);
                 }
             }
             else {
@@ -2320,7 +2324,7 @@ private:
             fadeAlpha = std::min(fadeTarget, fadeAlpha + dt / 0.15f);
         }
         else if (fadeAlpha > fadeTarget) {
-            fadeAlpha = std::max(fadeTarget, fadeAlpha - dt / 0.3f);
+            fadeAlpha = std::max(fadeTarget, fadeAlpha - dt / 0.15f);
         }
     }
 
@@ -2484,7 +2488,7 @@ private:
     // A short black between flat, stereo and cinema (standard.md section 4 asks for a fade;
     // this is a cut through black until a fade layer exists).
     void transitionBlink() {
-        blinkUntilS = std::max(blinkUntilS, displayS + 0.2);
+        blinkUntilS = std::max(blinkUntilS, displayS + 0.1);
     }
 
     // The cinema screen: placed in front of the head (yaw only, centre at eye height) when it
@@ -4255,6 +4259,8 @@ private:
     bool standingHeightValid = false;
     float standingHeightM = 0.0f;
     float recentreHeadY = 0.0f;
+    double sceneChangedS = 0.0;          // when the game's scene last changed (timing in the log)
+    double sceneChangedMonoS = 0.0;      // the same on the monotonic clock (the render thread's lines)
     float standingEyeM = 0.0f;           // calibrated standing eye height over the floor
     bool standingEyeCalibrated = false;
     bool headFloorLogged = false;
